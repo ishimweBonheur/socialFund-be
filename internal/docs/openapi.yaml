@@ -1,0 +1,100 @@
+openapi: 3.0.3
+info:
+  title: Social Fund API
+  version: "1.0"
+  description: Backend API for managing Social Fund members, contributions, assistance requests, notifications and fund transactions.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      summary: Service and database health
+      responses:
+        "200": {description: Healthy}
+        "503": {description: Database unavailable, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+  /api/v1/auth/google:
+    post:
+      summary: Authenticate using a Google-issued credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/GoogleLoginRequest"}
+            example: {credential: "<google-issued-token>"}
+      responses:
+        "200": {description: Authenticated, content: {application/json: {schema: {$ref: "#/components/schemas/LoginResponse"}}}}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {description: Invalid Google credential, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+        "403": {description: Account unavailable, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /api/v1/admin/users:
+    post:
+      summary: Create an inactive member and contribution plan
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMemberRequest"}
+            example:
+              full_name: Patience Ineza
+              email: patience@gmail.com
+              phone: "+250788123456"
+              contribution: {amount: "5000.00", frequency: MONTHLY, due_day: 5, start_date: "2026-09-01"}
+              reminder: {enabled: true, frequency: DAILY}
+      responses:
+        "201": {description: Member created inactive}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {description: Authentication required, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+        "403": {description: Admin access required, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+        "409": {description: Email or phone exists, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+        "500": {$ref: "#/components/responses/InternalError"}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  responses:
+    ValidationError: {description: Invalid request, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+    InternalError: {description: Internal error, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+  schemas:
+    APIError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties: {code: {type: string}, message: {type: string}}
+    GoogleLoginRequest:
+      type: object
+      required: [credential]
+      properties: {credential: {type: string}}
+    LoginResponse:
+      type: object
+      properties:
+        access_token: {type: string}
+        token_type: {type: string, example: Bearer}
+        expires_in: {type: integer, format: int64}
+        user: {type: object}
+    CreateMemberRequest:
+      type: object
+      required: [full_name, email, phone, contribution, reminder]
+      properties:
+        full_name: {type: string}
+        email: {type: string, format: email}
+        phone: {type: string}
+        contribution:
+          type: object
+          required: [amount, frequency, start_date]
+          properties:
+            amount: {type: string, pattern: "^[0-9]+(\\.[0-9]{1,2})?$"}
+            frequency: {type: string, enum: [DAILY, WEEKLY, MONTHLY, CUSTOM]}
+            interval_value: {type: integer}
+            due_day: {type: integer, minimum: 1, maximum: 31}
+            start_date: {type: string, format: date}
+        reminder:
+          type: object
+          required: [enabled]
+          properties:
+            enabled: {type: boolean}
+            frequency: {type: string, enum: [DAILY, WEEKLY, CUSTOM]}
+            interval: {type: integer}

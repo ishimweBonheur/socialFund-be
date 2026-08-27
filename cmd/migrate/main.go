@@ -15,11 +15,11 @@ func main() {
 	direction := flag.String("direction", "up", "migration command: up, down, or version")
 	steps := flag.Int("steps", 0, "number of migrations; zero means all for up/down")
 	flag.Parse()
-	cfg, err := config.Load()
+	databaseURL, err := config.LoadDatabaseURL()
 	if err != nil {
 		log.Fatalf("load configuration: %v", err)
 	}
-	m, err := migrate.New("file://migrations", cfg.DatabaseURL)
+	m, err := migrate.New("file://migrations", databaseURL)
 	if err != nil {
 		log.Fatalf("create migrator: %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"socialfund/internal/database"
 	"time"
 )
@@ -17,6 +18,7 @@ type Repository interface {
 	ListReady(context.Context, int) ([]Notification, error)
 	MarkSent(context.Context, uuid.UUID) error
 	MarkFailed(context.Context, uuid.UUID, string, time.Time) error
+	LoadAccountCreatedEmailData(context.Context, uuid.UUID) (AccountCreatedEmailData, error)
 }
 type PostgresRepository struct{ db *pgxpool.Pool }
 
@@ -54,4 +56,18 @@ func (r *PostgresRepository) MarkFailed(ctx context.Context, id uuid.UUID, messa
 		return pgx.ErrNoRows
 	}
 	return err
+}
+func (r *PostgresRepository) LoadAccountCreatedEmailData(ctx context.Context, userID uuid.UUID) (AccountCreatedEmailData, error) {
+	var data AccountCreatedEmailData
+	var amount decimal.Decimal
+	var frequency string
+	var dueDay, interval *int
+	err := r.db.QueryRow(ctx, `SELECT u.full_name,u.email,u.phone,p.amount,p.frequency,p.due_day,p.interval_value FROM users u JOIN contribution_plans p ON p.user_id=u.id AND p.is_active WHERE u.id=$1`, userID).Scan(&data.FullName, &data.Email, &data.Phone, &amount, &frequency, &dueDay, &interval)
+	if err != nil {
+		return AccountCreatedEmailData{}, err
+	}
+	data.ContributionAmount = formatAmount(amount)
+	data.ContributionFrequency = formatFrequency(frequency)
+	data.PaymentDue = formatPaymentDue(frequency, dueDay, interval)
+	return data, nil
 }

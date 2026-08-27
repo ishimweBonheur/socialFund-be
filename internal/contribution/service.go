@@ -12,6 +12,7 @@ import (
 	"socialfund/internal/fund"
 	"socialfund/internal/notification"
 	"socialfund/internal/user"
+	"time"
 )
 
 var ErrInvalidState = errors.New("contribution is not pending")
@@ -24,6 +25,21 @@ type Service struct {
 	audit         audit.Writer
 	notifications notification.Writer
 	users         user.Repository
+}
+
+func (s *Service) RunOverdueScheduler(ctx context.Context, interval time.Duration, limit int) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if _, err := s.ProcessOverdue(ctx, limit); err != nil && ctx.Err() == nil {
+				return err
+			}
+		}
+	}
 }
 
 func NewService(pool *pgxpool.Pool, repo Repository, fundWriter fund.Writer, auditWriter audit.Writer, notificationWriter notification.Writer, users user.Repository) *Service {

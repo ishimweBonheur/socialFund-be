@@ -3,11 +3,28 @@ package notification
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type Sender interface {
 	Send(context.Context, Notification) error
 }
+
+func (w *Worker) Run(ctx context.Context, interval time.Duration, limit int) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if _, err := w.RunBatch(ctx, limit); err != nil && ctx.Err() == nil {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
 type Worker struct {
 	service *Service
 	sender  Sender

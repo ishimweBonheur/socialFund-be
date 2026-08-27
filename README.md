@@ -25,6 +25,11 @@ docker compose ps
 
 The API is available at <http://localhost:8080> and database-aware health is available at <http://localhost:8080/healthz>.
 
+Development tools:
+
+- Swagger UI: <http://localhost:8080/swagger/index.html>
+- Mailpit email inbox: <http://localhost:8025>
+
 Compose starts services in this order:
 
 ```text
@@ -48,6 +53,47 @@ DATABASE_URL=postgres://app:password@localhost:5432/socialfund?sslmode=disable
 ```
 
 Legacy `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` variables remain supported only when all are supplied. Credentials belong in the ignored `.env` file and must not be committed.
+
+Authentication also requires:
+
+```env
+FRONTEND_URL=http://localhost:3000
+JWT_SECRET=replace-with-a-long-random-secret
+JWT_EXPIRATION=24h
+GOOGLE_CLIENT_ID=your-google-web-client-id.apps.googleusercontent.com
+```
+
+SMTP delivery is configured with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM`. Compose uses Mailpit for local email capture.
+
+## Member Onboarding
+
+An authenticated admin creates a member with:
+
+```text
+POST /api/v1/admin/users
+```
+
+The API transaction creates an `INACTIVE` member, active contribution plan, pending welcome notification, and `USER_CREATED` audit entry. Any failed insert rolls back the entire operation. The welcome link opens `${FRONTEND_URL}/login`; it never activates the account.
+
+The frontend sends the Google-issued credential to:
+
+```text
+POST /api/v1/auth/google
+```
+
+The backend validates the Google signature, audience, issuer, and expiration using `GOOGLE_CLIENT_ID`. It uses only the verified `sub`, `email`, and `email_verified` claims. A matching inactive account is activated and bound to the Google subject inside a transaction, activation/login audits are written, and the Social Fund JWT is issued only after commit.
+
+Protected requests use:
+
+```http
+Authorization: Bearer <social-fund-jwt>
+```
+
+All API errors use:
+
+```json
+{"error":{"code":"STRING_CODE","message":"Human-readable message"}}
+```
 
 ## Operations
 

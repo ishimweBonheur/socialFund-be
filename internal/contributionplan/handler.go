@@ -5,6 +5,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"net/http"
+	"socialfund/internal/httpx"
 )
 
 type Handler struct{ service *Service }
@@ -19,12 +20,12 @@ func (h *Handler) Routes() chi.Router {
 func (h *Handler) active(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "userID"))
 	if err != nil {
-		http.Error(w, "invalid user id", 400)
+		httpx.WriteError(w, httpx.ErrValidation)
 		return
 	}
 	p, err := h.service.GetActive(r.Context(), id)
 	if err != nil {
-		http.Error(w, "active plan not found", 404)
+		httpx.WriteError(w, httpx.NewError(404, "CONTRIBUTION_PLAN_NOT_FOUND", "Contribution plan was not found"))
 		return
 	}
 	jsonResponse(w, 200, p)
@@ -32,18 +33,14 @@ func (h *Handler) active(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var p ContributionPlan
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		http.Error(w, "invalid JSON", 400)
+		httpx.WriteError(w, httpx.ErrValidation)
 		return
 	}
 	created, err := h.service.Create(r.Context(), p)
 	if err != nil {
-		http.Error(w, "could not create plan", 400)
+		httpx.WriteError(w, httpx.ErrValidation)
 		return
 	}
 	jsonResponse(w, 201, created)
 }
-func jsonResponse(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
+func jsonResponse(w http.ResponseWriter, status int, v any) { httpx.WriteJSON(w, status, v) }
