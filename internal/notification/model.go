@@ -1,0 +1,24 @@
+package notification
+
+import (
+	"github.com/google/uuid"
+	"time"
+)
+
+type Notification struct {
+	ID                  uuid.UUID
+	UserID              uuid.UUID
+	ContributionID      *uuid.UUID
+	AssistanceRequestID *uuid.UUID
+	Type                string
+	Channel             string
+	Recipient           string
+	Subject             *string
+	Message             *string
+	Status              string
+	Attempts            int
+	LastError           *string
+	NextRetryAt         *time.Time
+	SentAt              *time.Time
+	CreatedAt           time.Time
+}
