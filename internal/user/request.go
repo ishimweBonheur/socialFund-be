@@ -10,11 +10,14 @@ type CreateMemberRequest struct {
 	Reminder     ReminderRequest     `json:"reminder"`
 }
 type ContributionRequest struct {
-	Amount        decimal.Decimal `json:"amount"`
-	Frequency     string          `json:"frequency"`
-	IntervalValue *int            `json:"interval_value,omitempty"`
-	DueDay        *int            `json:"due_day,omitempty"`
-	StartDate     string          `json:"start_date"`
+	Amount            decimal.Decimal  `json:"amount"`
+	Frequency         string           `json:"frequency"`
+	IntervalValue     *int             `json:"interval_value,omitempty"`
+	DueDay            *int             `json:"due_day,omitempty"`
+	StartDate         string           `json:"start_date"`
+	LateFeeEnabled    bool             `json:"late_fee_enabled"`
+	LateFeePercentage *decimal.Decimal `json:"late_fee_percentage,omitempty"`
+	GracePeriodDays   int              `json:"grace_period_days"`
 }
 type ReminderRequest struct {
 	Enabled   bool   `json:"enabled"`

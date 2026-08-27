@@ -11,6 +11,9 @@ type Contribution struct {
 	UserID                 uuid.UUID
 	ContributionPlanID     uuid.UUID
 	ExpectedAmount         decimal.Decimal
+	LateFeePercentage      *decimal.Decimal
+	LateFeeAmount          decimal.Decimal
+	OverdueAt              *time.Time
 	DueDate                time.Time
 	PaidAmount             *decimal.Decimal
 	PaymentDate            *time.Time
@@ -25,7 +28,10 @@ type Contribution struct {
 	ApprovalTokenHash      *string
 	ApprovalTokenExpiresAt *time.Time
 	ApprovalTokenUsedAt    *time.Time
+	ApprovalTokenAction    *string
 	Notes                  *string
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }
+
+func (c Contribution) TotalDue() decimal.Decimal { return c.ExpectedAmount.Add(c.LateFeeAmount) }

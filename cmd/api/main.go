@@ -19,10 +19,12 @@ import (
 	"socialfund/internal/config"
 	"socialfund/internal/contribution"
 	"socialfund/internal/contributionplan"
+	"socialfund/internal/dashboard"
 	"socialfund/internal/database"
 	"socialfund/internal/docs"
 	"socialfund/internal/fund"
 	"socialfund/internal/httpx"
+	appmetrics "socialfund/internal/metrics"
 	"socialfund/internal/notification"
 	"socialfund/internal/user"
 )
@@ -53,16 +55,36 @@ func main() {
 	planRepo := contributionplan.NewRepository(pool)
 	contributionRepo := contribution.NewRepository(pool)
 	assistanceRepo := assistance.NewRepository(pool)
-	fundRepo := fund.NewRepository()
-	auditRepo := audit.NewRepository()
+	fundRepo := fund.NewRepository(pool)
+	auditRepo := audit.NewRepository(pool)
 	notificationRepo := notification.NewRepository(pool)
 	userService := user.NewService(pool, userRepo, planRepo, notificationRepo, auditRepo, cfg.FrontendURL)
-	planService := contributionplan.NewService(planRepo)
-	contributionService := contribution.NewService(pool, contributionRepo, fundRepo, auditRepo, notificationRepo, userRepo)
+	planService := contributionplan.NewService(planRepo, pool, auditRepo)
+	contributionService := contribution.NewService(pool, contributionRepo, fundRepo, auditRepo, notificationRepo, userRepo, cfg.FrontendURL)
 	assistanceService := assistance.NewService(pool, assistanceRepo, fundRepo, auditRepo, notificationRepo)
+	var proofStorage contribution.FileStorage
+	if cfg.StorageDriver == "s3" {
+		proofStorage, err = contribution.NewS3Storage(ctx, cfg.S3Endpoint, cfg.S3Region, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3UsePathStyle)
+		if err != nil {
+			logger.Error("configure proof storage", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		proofStorage = contribution.NewLocalFileStorage(cfg.StorageLocalPath+"/proofs", "/uploads/proofs")
+	}
+	contributionHandler := contribution.NewHandler(contributionService, proofStorage, logger)
+	assistanceHandler := assistance.NewHandler(assistanceService, logger)
 	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTExpiration)
 	authService := auth.NewService(pool, userRepo, auditRepo, auth.NewGoogleVerifier(cfg.GoogleClientID), tokenManager, logger)
-	notificationService := notification.NewService(notificationRepo)
+	notificationService := notification.NewService(notificationRepo, pool, auditRepo)
+	dashboardHandler := dashboard.NewHandler(pool, logger)
+	metricsRegistry := appmetrics.New(pool)
+	generalLimiter := httpx.NewRateLimiter(cfg.RateLimitRPM)
+	authLimiter := httpx.NewRateLimiter(cfg.AuthRateLimitRPM)
+	if cfg.RateLimitEnabled {
+		go generalLimiter.Cleanup(ctx.Done())
+		go authLimiter.Cleanup(ctx.Done())
+	}
 	if cfg.SMTPHost != "" && cfg.SMTPUsername != "" && cfg.SMTPPassword != "" {
 		port, parseErr := strconv.Atoi(cfg.SMTPPort)
 		if parseErr != nil {
@@ -94,8 +116,19 @@ func main() {
 	}()
 
 	router := chi.NewRouter()
-	router.Use(middleware.Recoverer, httpx.RequestIDMiddleware, httpx.LoggingMiddleware(logger))
+	router.Use(middleware.Recoverer, httpx.RequestIDMiddleware, metricsRegistry.Middleware, httpx.LoggingMiddleware(logger))
+	if cfg.RateLimitEnabled {
+		router.Use(generalLimiter.Middleware)
+	}
 	router.Get("/healthz", database.HealthHandler(pool))
+	if cfg.AppEnv != "production" {
+		router.Get("/metrics", metricsRegistry.Handler)
+	} else {
+		router.With(auth.Authenticate(tokenManager), auth.RequireAdmin).Get("/metrics", metricsRegistry.Handler)
+	}
+	if cfg.StorageDriver == "local" {
+		router.With(auth.Authenticate(tokenManager)).Handle("/uploads/proofs/*", http.StripPrefix("/uploads/proofs/", http.FileServer(http.Dir(cfg.StorageLocalPath+"/proofs"))))
+	}
 	if cfg.AppEnv != "production" {
 		router.Get("/swagger/openapi.yaml", docs.Spec)
 		router.Get("/swagger/index.html", docs.UI)
@@ -104,20 +137,32 @@ func main() {
 		})
 	}
 	router.Route("/api/v1", func(r chi.Router) {
-		r.Mount("/auth", auth.NewHandler(authService, logger).Routes())
+		if cfg.RateLimitEnabled {
+			r.With(authLimiter.Middleware).Mount("/auth", auth.NewHandler(authService, logger).Routes())
+		} else {
+			r.Mount("/auth", auth.NewHandler(authService, logger).Routes())
+		}
+		r.Post("/contributions/{id}/review-token/validate", contributionHandler.ValidateToken)
 		r.Group(func(protected chi.Router) {
 			protected.Use(auth.Authenticate(tokenManager))
 			protected.Mount("/users", user.NewHandler(userService, logger).Routes())
+			protected.Mount("/contributions", contributionHandler.Routes(auth.RequireAdmin, authLimiter.Middleware))
+			protected.Mount("/assistance-requests", assistanceHandler.Routes(auth.RequireAdmin))
+			protected.Mount("/dashboard", dashboardHandler.MemberRoutes())
 			protected.Group(func(adminOnly chi.Router) {
 				adminOnly.Use(auth.RequireAdmin)
 				adminOnly.Mount("/contribution-plans", contributionplan.NewHandler(planService).Routes())
-				adminOnly.Mount("/contributions", contribution.NewHandler(contributionService, logger).Routes())
-				adminOnly.Mount("/assistance-requests", assistance.NewHandler(assistanceService, logger).Routes())
 			})
 		})
 		r.Route("/admin", func(admin chi.Router) {
 			admin.Use(auth.Authenticate(tokenManager), auth.RequireAdmin)
-			admin.Mount("/users", user.NewHandler(userService, logger).AdminRoutes())
+			admin.With(authLimiter.Middleware).Mount("/users", user.NewHandler(userService, logger).AdminRoutes())
+			admin.Mount("/contributions", contributionHandler.AdminRoutes())
+			admin.Mount("/assistance-requests", assistanceHandler.AdminRoutes())
+			admin.Mount("/fund", fund.NewHandler(fundRepo, logger).Routes())
+			admin.Mount("/audit-logs", audit.NewHandler(auditRepo, logger).Routes())
+			admin.Mount("/dashboard", dashboardHandler.AdminRoutes())
+			admin.With(authLimiter.Middleware).Mount("/notifications", notification.NewHandler(notificationService, logger).Routes())
 		})
 	})
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}

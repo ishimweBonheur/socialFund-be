@@ -12,3 +12,31 @@ type DisbursementInput struct {
 	Method              string          `json:"method"`
 	Reference           string          `json:"reference"`
 }
+type CreateInput struct {
+	UserID          uuid.UUID       `json:"-"`
+	AmountRequested decimal.Decimal `json:"amount_requested"`
+	Reason          string          `json:"reason"`
+	Description     *string         `json:"description"`
+	AttachmentURL   *string         `json:"attachment_url"`
+}
+type ApprovalInput struct {
+	AssistanceRequestID uuid.UUID       `json:"-"`
+	AdminID             uuid.UUID       `json:"-"`
+	AmountApproved      decimal.Decimal `json:"amount_approved"`
+}
+type RejectionInput struct {
+	AssistanceRequestID uuid.UUID `json:"-"`
+	AdminID             uuid.UUID `json:"-"`
+	Reason              string    `json:"reason"`
+}
+type ListFilter struct {
+	UserID *uuid.UUID
+	Status string
+	Limit  int
+	Offset int
+}
+type ReviewItem struct {
+	AssistanceRequest
+	MemberName  string `json:"member_name"`
+	MemberEmail string `json:"member_email"`
+}

@@ -14,6 +14,7 @@ WORKDIR /app
 COPY --from=builder /out/api /app/api
 COPY --from=builder /out/migrate /app/migrate
 COPY migrations /app/migrations
+RUN mkdir -p /app/uploads/proofs && chown -R socialfund:socialfund /app/uploads
 USER socialfund
 EXPOSE 8080
 CMD ["/app/api"]

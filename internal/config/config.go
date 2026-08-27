@@ -8,20 +8,30 @@ import (
 )
 
 type Config struct {
-	DatabaseURL    string
-	MaxConns       int32
-	MinConns       int32
-	HTTPAddress    string
-	AppEnv         string
-	FrontendURL    string
-	JWTSecret      string
-	JWTExpiration  time.Duration
-	GoogleClientID string
-	SMTPHost       string
-	SMTPPort       string
-	SMTPUsername   string
-	SMTPPassword   string
-	SMTPFrom       string
+	DatabaseURL                        string
+	MaxConns                           int32
+	MinConns                           int32
+	MaxConnLifetime                    time.Duration
+	MaxConnIdleTime                    time.Duration
+	RateLimitEnabled                   bool
+	RateLimitRPM                       int
+	AuthRateLimitRPM                   int
+	StorageDriver                      string
+	StorageLocalPath                   string
+	S3Endpoint, S3Region               string
+	S3Bucket, S3AccessKey, S3SecretKey string
+	S3UsePathStyle                     bool
+	HTTPAddress                        string
+	AppEnv                             string
+	FrontendURL                        string
+	JWTSecret                          string
+	JWTExpiration                      time.Duration
+	GoogleClientID                     string
+	SMTPHost                           string
+	SMTPPort                           string
+	SMTPUsername                       string
+	SMTPPassword                       string
+	SMTPFrom                           string
 }
 
 func Load() (Config, error) {
@@ -35,6 +45,34 @@ func Load() (Config, error) {
 	}
 	if minConns > maxConns {
 		return Config{}, fmt.Errorf("DB_MIN_CONNS must not exceed DB_MAX_CONNS")
+	}
+	maxLifetime, err := envDuration("DB_MAX_CONN_LIFETIME", "30m")
+	if err != nil {
+		return Config{}, err
+	}
+	maxIdle, err := envDuration("DB_MAX_CONN_IDLE_TIME", "5m")
+	if err != nil {
+		return Config{}, err
+	}
+	rateRPM, err := envInt("RATE_LIMIT_REQUESTS_PER_MINUTE", 120)
+	if err != nil {
+		return Config{}, err
+	}
+	authRPM, err := envInt("AUTH_RATE_LIMIT_REQUESTS_PER_MINUTE", 20)
+	if err != nil {
+		return Config{}, err
+	}
+	pathStyle, err := strconv.ParseBool(env("S3_USE_PATH_STYLE", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("S3_USE_PATH_STYLE must be boolean")
+	}
+	rateEnabled, err := strconv.ParseBool(env("RATE_LIMIT_ENABLED", "true"))
+	if err != nil {
+		return Config{}, fmt.Errorf("RATE_LIMIT_ENABLED must be boolean")
+	}
+	driver := env("STORAGE_DRIVER", "local")
+	if driver != "local" && driver != "s3" {
+		return Config{}, fmt.Errorf("STORAGE_DRIVER must be local or s3")
 	}
 	jwtExpiration, err := time.ParseDuration(env("JWT_EXPIRATION", "24h"))
 	if err != nil {
@@ -58,10 +96,25 @@ func Load() (Config, error) {
 		httpAddress = ":" + port
 	}
 	return Config{
-		DatabaseURL: databaseURL, MaxConns: maxConns, MinConns: minConns,
+		DatabaseURL: databaseURL, MaxConns: maxConns, MinConns: minConns, MaxConnLifetime: maxLifetime, MaxConnIdleTime: maxIdle, RateLimitEnabled: rateEnabled, RateLimitRPM: rateRPM, AuthRateLimitRPM: authRPM, StorageDriver: driver, StorageLocalPath: env("STORAGE_LOCAL_PATH", "./uploads"), S3Endpoint: os.Getenv("S3_ENDPOINT"), S3Region: os.Getenv("S3_REGION"), S3Bucket: os.Getenv("S3_BUCKET"), S3AccessKey: os.Getenv("S3_ACCESS_KEY"), S3SecretKey: os.Getenv("S3_SECRET_KEY"), S3UsePathStyle: pathStyle,
 		HTTPAddress: httpAddress, AppEnv: env("APP_ENV", "development"), FrontendURL: env("FRONTEND_URL", "http://localhost:3000"), JWTSecret: jwtSecret, JWTExpiration: jwtExpiration, GoogleClientID: googleClientID,
 		SMTPHost: os.Getenv("SMTP_HOST"), SMTPPort: env("SMTP_PORT", "1025"), SMTPUsername: os.Getenv("SMTP_USERNAME"), SMTPPassword: os.Getenv("SMTP_PASSWORD"), SMTPFrom: env("SMTP_FROM", "social-fund@example.test"),
 	}, nil
+}
+func envDuration(key, fallback string) (time.Duration, error) {
+	v, err := time.ParseDuration(env(key, fallback))
+	if err != nil || v <= 0 {
+		return 0, fmt.Errorf("%s must be a positive duration", key)
+	}
+	return v, nil
+}
+func envInt(key string, fallback int) (int, error) {
+	v := env(key, strconv.Itoa(fallback))
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return n, nil
 }
 
 func LoadDatabaseURL() (string, error) {

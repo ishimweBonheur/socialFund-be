@@ -22,3 +22,8 @@ type Notification struct {
 	SentAt              *time.Time
 	CreatedAt           time.Time
 }
+type Filter struct {
+	Status, Type, DateFrom, DateTo string
+	UserID                         *uuid.UUID
+	Limit, Offset                  int
+}

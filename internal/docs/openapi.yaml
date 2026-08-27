@@ -1,81 +1,261 @@
 openapi: 3.0.3
 info:
   title: Social Fund API
-  version: "1.0"
-  description: Backend API for managing Social Fund members, contributions, assistance requests, notifications and fund transactions.
+  version: "1.1"
+  description: Member contributions, assistance, fund ledger, and audit API.
 servers:
   - url: http://localhost:8080
+tags:
+  - {name: System, description: Service health and operational readiness}
+  - {name: Auth}
+  - {name: Users, description: Administrator member management}
+  - {name: Contribution Plans, description: Contribution schedule and penalty configuration}
+  - {name: Contributions}
+  - {name: Assistance}
+  - {name: Fund}
+  - {name: Audit}
+  - {name: Dashboard, description: Member and administrator summaries}
+  - {name: Notifications, description: Durable notification history and retry administration}
+  - {name: Monitoring, description: Application and database metrics}
 paths:
   /healthz:
     get:
+      tags: [System]
       summary: Service and database health
       responses:
         "200": {description: Healthy}
-        "503": {description: Database unavailable, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+        "503": {$ref: "#/components/responses/InternalError"}
   /api/v1/auth/google:
     post:
-      summary: Authenticate using a Google-issued credential
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/GoogleLoginRequest"}
-            example: {credential: "<google-issued-token>"}
+      tags: [Auth]
+      summary: Authenticate with a Google ID credential
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/GoogleLogin"}}}}
       responses:
-        "200": {description: Authenticated, content: {application/json: {schema: {$ref: "#/components/schemas/LoginResponse"}}}}
+        "200": {description: JWT and user identity}
         "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {description: Invalid Google credential, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
-        "403": {description: Account unavailable, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
-        "500": {$ref: "#/components/responses/InternalError"}
-  /api/v1/admin/users:
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/admin/users/:
+    get: {tags: [Users], summary: List users (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/Limit"}, {$ref: "#/components/parameters/Offset"}, {name: status, in: query, schema: {type: string}}, {name: role, in: query, schema: {type: string}}, {name: search, in: query, schema: {type: string}}], responses: {"200": {description: Users}, "429": {$ref: "#/components/responses/RateLimited"}}}
     post:
-      summary: Create an inactive member and contribution plan
+      tags: [Users]
+      summary: Create a member and contribution plan
+      description: ADMIN only. Supports one-time late-fee and reminder configuration.
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateMember"}}}}
+      responses:
+        "201": {description: Member created}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/contributions/:
+    get:
+      tags: [Contributions]
+      summary: List the authenticated member's contributions
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: "#/components/parameters/Limit"}, {$ref: "#/components/parameters/Offset"}]
+      responses: {"200": {description: Contribution list}, "401": {$ref: "#/components/responses/Unauthorized"}}
+  /api/v1/contributions/outstanding:
+    get:
+      tags: [Contributions]
+      summary: Get the member's derived outstanding total
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Outstanding amount and overdue count}, "401": {$ref: "#/components/responses/Unauthorized"}}
+  /api/v1/contributions/{id}:
+    parameters: [{$ref: "#/components/parameters/ID"}]
+    get:
+      tags: [Contributions]
+      summary: Get contribution detail
+      description: Members may access their own contribution; admins may access any contribution.
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Contribution detail}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /api/v1/contributions/{id}/proof:
+    parameters: [{$ref: "#/components/parameters/ID"}]
+    get: {tags: [Contributions], summary: Get an authorized short-lived proof URL, security: [{bearerAuth: []}], responses: {"200": {description: Five-minute signed URL}, "403": {$ref: "#/components/responses/Forbidden"}}}
+    post:
+      tags: [Contributions]
+      summary: Submit or resubmit payment proof
+      description: MEMBER owner only. Accepted while DUE, OVERDUE, or REJECTED. Maximum file size is 10 MB.
       security: [{bearerAuth: []}]
       requestBody:
         required: true
         content:
-          application/json:
-            schema: {$ref: "#/components/schemas/CreateMemberRequest"}
-            example:
-              full_name: Patience Ineza
-              email: patience@gmail.com
-              phone: "+250788123456"
-              contribution: {amount: "5000.00", frequency: MONTHLY, due_day: 5, start_date: "2026-09-01"}
-              reminder: {enabled: true, frequency: DAILY}
+          multipart/form-data:
+            schema:
+              type: object
+              required: [amount, payment_method, transaction_reference, proof]
+              properties:
+                amount: {type: string, example: "5100.00"}
+                payment_method: {type: string, enum: [MOBILE_MONEY, BANK_TRANSFER, CASH, OTHER]}
+                transaction_reference: {type: string}
+                proof: {type: string, format: binary, description: JPG, JPEG, PNG, or PDF}
       responses:
-        "201": {description: Member created inactive}
+        "200": {description: Proof accepted and contribution changed to PENDING}
         "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {description: Authentication required, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
-        "403": {description: Admin access required, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
-        "409": {description: Email or phone exists, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
-        "500": {$ref: "#/components/responses/InternalError"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {description: File too large}
+  /api/v1/admin/contributions/pending:
+    get:
+      tags: [Contributions]
+      summary: List contributions awaiting review
+      description: ADMIN only.
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: "#/components/parameters/Limit"}, {$ref: "#/components/parameters/Offset"}]
+      responses: {"200": {description: Pending review list}, "403": {$ref: "#/components/responses/Forbidden"}}
+  /api/v1/contributions/{id}/approve:
+    parameters: [{$ref: "#/components/parameters/ID"}]
+    post:
+      tags: [Contributions]
+      summary: Approve a pending contribution
+      description: ADMIN only. Creates exactly one IN ledger transaction.
+      security: [{bearerAuth: []}]
+      requestBody: {content: {application/json: {schema: {type: object, properties: {notes: {type: string}}}}}}
+      responses: {"204": {description: Approved}, "403": {$ref: "#/components/responses/Forbidden"}, "409": {$ref: "#/components/responses/Conflict"}}
+  /api/v1/contributions/{id}/reject:
+    parameters: [{$ref: "#/components/parameters/ID"}]
+    post:
+      tags: [Contributions]
+      summary: Reject a pending contribution proof
+      description: ADMIN only. Does not create a ledger transaction.
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Rejection"}}}}
+      responses: {"204": {description: Rejected}, "403": {$ref: "#/components/responses/Forbidden"}, "409": {$ref: "#/components/responses/Conflict"}}
+  /api/v1/assistance-requests/:
+    post:
+      tags: [Assistance]
+      summary: Create a member assistance request
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/AssistanceCreate"}}}}
+      responses: {"201": {description: Request created as PENDING}, "400": {$ref: "#/components/responses/ValidationError"}}
+    get:
+      tags: [Assistance]
+      summary: List the authenticated member's assistance requests
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: "#/components/parameters/Limit"}, {$ref: "#/components/parameters/Offset"}]
+      responses: {"200": {description: Member request list}}
+  /api/v1/admin/assistance-requests/:
+    get:
+      tags: [Assistance]
+      summary: List assistance requests for admin review
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [PENDING, APPROVED, REJECTED, PAID, CANCELLED]}}
+        - {$ref: "#/components/parameters/Limit"}
+        - {$ref: "#/components/parameters/Offset"}
+      responses: {"200": {description: Assistance review list}, "403": {$ref: "#/components/responses/Forbidden"}}
+  /api/v1/assistance-requests/{id}/approve:
+    parameters: [{$ref: "#/components/parameters/ID"}]
+    post:
+      tags: [Assistance]
+      summary: Approve an assistance amount without moving funds
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [amount_approved], properties: {amount_approved: {type: string}}}}}}
+      responses: {"204": {description: Approved}, "409": {$ref: "#/components/responses/Conflict"}}
+  /api/v1/assistance-requests/{id}/reject:
+    parameters: [{$ref: "#/components/parameters/ID"}]
+    post:
+      tags: [Assistance]
+      summary: Reject an assistance request
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Rejection"}}}}
+      responses: {"204": {description: Rejected}, "409": {$ref: "#/components/responses/Conflict"}}
+  /api/v1/assistance-requests/{id}/pay:
+    parameters: [{$ref: "#/components/parameters/ID"}]
+    post:
+      tags: [Assistance]
+      summary: Record payment of an approved request
+      description: ADMIN only. Creates exactly one OUT ledger transaction.
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Disbursement"}}}}
+      responses: {"204": {description: Paid}, "409": {$ref: "#/components/responses/Conflict"}}
+  /api/v1/admin/fund/summary:
+    get:
+      tags: [Fund]
+      summary: Calculate total in, total out, and current balance
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Derived ledger summary}, "403": {$ref: "#/components/responses/Forbidden"}}
+  /api/v1/admin/fund/transactions:
+    get:
+      tags: [Fund]
+      summary: Search the financial ledger
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: type, in: query, schema: {type: string, enum: [CONTRIBUTION, ASSISTANCE, ADJUSTMENT, REFUND]}}
+        - {name: direction, in: query, schema: {type: string, enum: [IN, OUT]}}
+        - {name: date_from, in: query, schema: {type: string, format: date}}
+        - {name: date_to, in: query, schema: {type: string, format: date}}
+        - {name: user_id, in: query, schema: {type: string, format: uuid}}
+        - {$ref: "#/components/parameters/Limit"}
+        - {$ref: "#/components/parameters/Offset"}
+      responses: {"200": {description: Ledger transactions}}
+  /api/v1/admin/audit-logs/:
+    get:
+      tags: [Audit]
+      summary: Search immutable audit history
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: user_id, in: query, schema: {type: string, format: uuid}}
+        - {name: action, in: query, schema: {type: string}}
+        - {name: entity_type, in: query, schema: {type: string}}
+        - {name: entity_id, in: query, schema: {type: string, format: uuid}}
+        - {name: date_from, in: query, schema: {type: string, format: date}}
+        - {name: date_to, in: query, schema: {type: string, format: date}}
+        - {$ref: "#/components/parameters/Limit"}
+        - {$ref: "#/components/parameters/Offset"}
+      responses: {"200": {description: Audit records}, "403": {$ref: "#/components/responses/Forbidden"}}
+  /api/v1/admin/users/{id}:
+    parameters: [{$ref: "#/components/parameters/ID"}]
+    get: {tags: [Users], summary: Get user (ADMIN), security: [{bearerAuth: []}], responses: {"200": {description: User}, "404": {$ref: "#/components/responses/NotFound"}}}
+    patch: {tags: [Users], summary: Update member profile (ADMIN), security: [{bearerAuth: []}], requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {full_name: {type: string}, email: {type: string, format: email}, phone: {type: string}}}}}}, responses: {"200": {description: Updated}, "409": {$ref: "#/components/responses/Conflict"}}}
+  /api/v1/admin/users/{id}/suspend:
+    post: {tags: [Users], summary: Suspend active member (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/ID"}], responses: {"200": {description: Suspended}, "409": {$ref: "#/components/responses/Conflict"}}}
+  /api/v1/admin/users/{id}/activate:
+    post: {tags: [Users], summary: Restore suspended member (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/ID"}], responses: {"200": {description: Active}, "409": {$ref: "#/components/responses/Conflict"}}}
+  /api/v1/contribution-plans/{id}:
+    patch: {tags: [Contribution Plans], summary: Update future contribution-plan configuration (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/ID"}], responses: {"200": {description: Updated plan}, "400": {$ref: "#/components/responses/ValidationError"}}}
+  /api/v1/dashboard/:
+    get: {tags: [Dashboard], summary: Member dashboard, security: [{bearerAuth: []}], responses: {"200": {description: Member aggregates}}}
+  /api/v1/admin/dashboard/:
+    get: {tags: [Dashboard], summary: Administrative dashboard, security: [{bearerAuth: []}], responses: {"200": {description: Operational aggregates}}}
+  /api/v1/admin/notifications/:
+    get: {tags: [Notifications], summary: Notification history (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/Limit"}, {$ref: "#/components/parameters/Offset"}, {name: status, in: query, schema: {type: string}}, {name: type, in: query, schema: {type: string}}, {name: user_id, in: query, schema: {type: string, format: uuid}}, {name: date_from, in: query, schema: {type: string, format: date}}, {name: date_to, in: query, schema: {type: string, format: date}}], responses: {"200": {description: Notification history}}}
+  /api/v1/admin/notifications/{id}/retry:
+    post: {tags: [Notifications], summary: Queue failed notification retry (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/ID"}], responses: {"200": {description: Retry queued}, "409": {$ref: "#/components/responses/Conflict"}, "429": {$ref: "#/components/responses/RateLimited"}}}
+  /api/v1/contributions/{id}/review-token/validate:
+    post: {tags: [Contributions], summary: Validate review token without changing state, parameters: [{$ref: "#/components/parameters/ID"}], requestBody: {required: true, content: {application/json: {schema: {type: object, required: [token, action], properties: {token: {type: string}, action: {type: string, enum: [approve, reject]}}}}}}, responses: {"200": {description: Safe contribution preview}, "400": {$ref: "#/components/responses/ValidationError"}}}
+  /metrics:
+    get: {tags: [Monitoring], summary: Prometheus-format application metrics, description: Public in development; ADMIN JWT required in production., responses: {"200": {description: Prometheus text exposition}}}
 components:
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    ID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+    Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
   responses:
     ValidationError: {description: Invalid request, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+    Unauthorized: {description: Authentication required, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+    Forbidden: {description: Role or ownership check failed, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+    NotFound: {description: Resource not found, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+    Conflict: {description: Invalid state transition or amount, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
     InternalError: {description: Internal error, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
+    RateLimited: {description: Too many requests, headers: {Retry-After: {schema: {type: integer}}}, content: {application/json: {schema: {$ref: "#/components/schemas/APIError"}}}}
   schemas:
     APIError:
       type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message]
-          properties: {code: {type: string}, message: {type: string}}
-    GoogleLoginRequest:
+      properties: {error: {type: object, properties: {code: {type: string}, message: {type: string}}}}
+    GoogleLogin: {type: object, required: [credential], properties: {credential: {type: string}}}
+    Rejection: {type: object, required: [reason], properties: {reason: {type: string}}}
+    AssistanceCreate:
       type: object
-      required: [credential]
-      properties: {credential: {type: string}}
-    LoginResponse:
+      required: [amount_requested, reason]
+      properties: {amount_requested: {type: string, example: "100000.00"}, reason: {type: string}, description: {type: string}, attachment_url: {type: string}}
+    Disbursement:
       type: object
-      properties:
-        access_token: {type: string}
-        token_type: {type: string, example: Bearer}
-        expires_in: {type: integer, format: int64}
-        user: {type: object}
-    CreateMemberRequest:
+      required: [amount, method, reference]
+      properties: {amount: {type: string}, method: {type: string}, reference: {type: string}}
+    CreateMember:
       type: object
       required: [full_name, email, phone, contribution, reminder]
       properties:
@@ -86,15 +266,17 @@ components:
           type: object
           required: [amount, frequency, start_date]
           properties:
-            amount: {type: string, pattern: "^[0-9]+(\\.[0-9]{1,2})?$"}
+            amount: {type: string}
             frequency: {type: string, enum: [DAILY, WEEKLY, MONTHLY, CUSTOM]}
             interval_value: {type: integer}
             due_day: {type: integer, minimum: 1, maximum: 31}
             start_date: {type: string, format: date}
+            late_fee_enabled: {type: boolean}
+            late_fee_percentage: {type: string, example: "2.00"}
+            grace_period_days: {type: integer, minimum: 0}
         reminder:
           type: object
-          required: [enabled]
           properties:
             enabled: {type: boolean}
             frequency: {type: string, enum: [DAILY, WEEKLY, CUSTOM]}
-            interval: {type: integer}
+            interval: {type: integer, minimum: 1}

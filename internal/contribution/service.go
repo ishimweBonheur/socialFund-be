@@ -2,21 +2,29 @@ package contribution
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"socialfund/internal/audit"
 	"socialfund/internal/database"
 	"socialfund/internal/fund"
+	"socialfund/internal/httpx"
 	"socialfund/internal/notification"
 	"socialfund/internal/user"
+	"strings"
 	"time"
 )
 
 var ErrInvalidState = errors.New("contribution is not pending")
 var ErrInvalidAmount = errors.New("paid amount must be positive")
+var ErrForbidden = errors.New("contribution does not belong to member")
+var ErrProofRequired = errors.New("payment proof is required")
 
 type Service struct {
 	pool          *pgxpool.Pool
@@ -25,6 +33,7 @@ type Service struct {
 	audit         audit.Writer
 	notifications notification.Writer
 	users         user.Repository
+	frontendURL   string
 }
 
 func (s *Service) RunOverdueScheduler(ctx context.Context, interval time.Duration, limit int) error {
@@ -42,8 +51,12 @@ func (s *Service) RunOverdueScheduler(ctx context.Context, interval time.Duratio
 	}
 }
 
-func NewService(pool *pgxpool.Pool, repo Repository, fundWriter fund.Writer, auditWriter audit.Writer, notificationWriter notification.Writer, users user.Repository) *Service {
-	return &Service{pool: pool, repo: repo, fund: fundWriter, audit: auditWriter, notifications: notificationWriter, users: users}
+func NewService(pool *pgxpool.Pool, repo Repository, fundWriter fund.Writer, auditWriter audit.Writer, notificationWriter notification.Writer, users user.Repository, frontendURLs ...string) *Service {
+	frontendURL := ""
+	if len(frontendURLs) > 0 {
+		frontendURL = strings.TrimRight(frontendURLs[0], "/")
+	}
+	return &Service{pool: pool, repo: repo, fund: fundWriter, audit: auditWriter, notifications: notificationWriter, users: users, frontendURL: frontendURL}
 }
 func (s *Service) Approve(ctx context.Context, in ApprovalInput) error {
 	return database.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
@@ -56,6 +69,9 @@ func (s *Service) Approve(ctx context.Context, in ApprovalInput) error {
 		}
 		if c.PaidAmount == nil || !c.PaidAmount.IsPositive() {
 			return ErrInvalidAmount
+		}
+		if c.ProofURL == nil || *c.ProofURL == "" || c.PaymentMethod == nil || c.TransactionReference == nil {
+			return ErrProofRequired
 		}
 		if err = s.repo.SetApproved(ctx, tx, in); err != nil {
 			return err
@@ -70,9 +86,118 @@ func (s *Service) Approve(ctx context.Context, in ApprovalInput) error {
 		if _, err = s.audit.Create(ctx, tx, audit.AuditLog{UserID: &admin, Action: "CONTRIBUTION_APPROVED", EntityType: "CONTRIBUTION", EntityID: c.ID, OldData: oldData, NewData: newData}); err != nil {
 			return err
 		}
-		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_APPROVED", Channel: "EMAIL", Recipient: email, Status: "PENDING"})
+		subject, message := "Contribution approved", fmt.Sprintf("Your contribution of %s has been approved. Payment method: %s. Reference: %s. Approval date: %s. Status: APPROVED.", c.PaidAmount.StringFixed(2), *c.PaymentMethod, *c.TransactionReference, time.Now().Format(time.RFC3339))
+		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_APPROVED", Channel: "EMAIL", Recipient: email, Subject: &subject, Message: &message, Status: "PENDING"})
 		return err
 	})
+}
+func (s *Service) ListMine(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Contribution, error) {
+	return s.repo.ListByUser(ctx, userID, limit, offset)
+}
+func (s *Service) GetFor(ctx context.Context, id, userID uuid.UUID, isAdmin bool) (Contribution, error) {
+	c, err := s.repo.GetByID(ctx, id)
+	if err == nil && !isAdmin && c.UserID != userID {
+		return Contribution{}, ErrForbidden
+	}
+	return c, err
+}
+func (s *Service) ListPending(ctx context.Context, limit, offset int) ([]ReviewItem, error) {
+	return s.repo.ListPending(ctx, limit, offset)
+}
+func (s *Service) Outstanding(ctx context.Context, userID uuid.UUID) (Outstanding, error) {
+	return s.repo.Outstanding(ctx, userID)
+}
+func (s *Service) SubmitProof(ctx context.Context, in ProofInput) error {
+	methods := map[string]bool{"MOBILE_MONEY": true, "BANK_TRANSFER": true, "CASH": true, "OTHER": true}
+	if !in.Amount.IsPositive() || !methods[in.PaymentMethod] || in.TransactionReference == "" || in.ProofURL == "" {
+		return ErrInvalidAmount
+	}
+	return database.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		c, email, err := s.repo.Lock(ctx, tx, in.ContributionID)
+		if err != nil {
+			return fmt.Errorf("lock contribution: %w", err)
+		}
+		if c.UserID != in.UserID {
+			return ErrForbidden
+		}
+		if c.Status != "DUE" && c.Status != "OVERDUE" && c.Status != "REJECTED" {
+			return ErrInvalidState
+		}
+		if !in.Amount.Equal(c.TotalDue()) {
+			return ErrInvalidAmount
+		}
+		resubmitted := c.Status == "REJECTED"
+		if err = s.repo.SubmitProof(ctx, tx, in); err != nil {
+			return err
+		}
+		rawToken, tokenHash, err := newReviewToken()
+		if err != nil {
+			return err
+		}
+		if err = s.repo.SetReviewToken(ctx, tx, c.ID, tokenHash, time.Now().Add(24*time.Hour)); err != nil {
+			return err
+		}
+		action := "PROOF_UPLOADED"
+		if resubmitted {
+			action = "CONTRIBUTION_PROOF_RESUBMITTED"
+		}
+		actor := in.UserID
+		oldData, _ := json.Marshal(map[string]string{"status": c.Status})
+		newData, _ := json.Marshal(map[string]string{"status": "PENDING", "amount": in.Amount.StringFixed(2)})
+		if _, err = s.audit.Create(ctx, tx, audit.AuditLog{UserID: &actor, Action: action, EntityType: "CONTRIBUTION", EntityID: c.ID, OldData: oldData, NewData: newData}); err != nil {
+			return err
+		}
+		// Queue for the configured administrator; falling back to the member recipient is deliberately avoided.
+		var adminID uuid.UUID
+		var adminEmail string
+		if err = tx.QueryRow(ctx, `SELECT id,email FROM users WHERE role='ADMIN' AND status='ACTIVE' ORDER BY created_at LIMIT 1`).Scan(&adminID, &adminEmail); err != nil {
+			return fmt.Errorf("find notification administrator: %w", err)
+		}
+		var memberName string
+		if err = tx.QueryRow(ctx, `SELECT full_name FROM users WHERE id=$1`, c.UserID).Scan(&memberName); err != nil {
+			return fmt.Errorf("load proof member: %w", err)
+		}
+		id := c.ID
+		approveURL := fmt.Sprintf("%s/admin/contributions/%s/review?action=approve&token=%s.approve", s.frontendURL, c.ID, rawToken)
+		rejectURL := fmt.Sprintf("%s/admin/contributions/%s/review?action=reject&token=%s.reject", s.frontendURL, c.ID, rawToken)
+		subject, message := "Contribution proof submitted", fmt.Sprintf("Member: %s\nEmail: %s\nPaid amount: %s\nExpected contribution: %s\nLate fee: %s\nTotal due: %s\nPayment method: %s\nTransaction reference: %s\nDue date: %s\nProof: %s\n\nReview and approve: %s\nReview and reject: %s\n\nThese links open a confirmation page and do not change financial state.", memberName, email, in.Amount.StringFixed(2), c.ExpectedAmount.StringFixed(2), c.LateFeeAmount.StringFixed(2), c.TotalDue().StringFixed(2), in.PaymentMethod, in.TransactionReference, c.DueDate.Format("2006-01-02"), in.ProofURL, approveURL, rejectURL)
+		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: adminID, ContributionID: &id, Type: "PROOF_SUBMITTED", Channel: "EMAIL", Recipient: adminEmail, Subject: &subject, Message: &message, Status: "PENDING"})
+		return err
+	})
+}
+func (s *Service) ValidateReviewToken(ctx context.Context, id uuid.UUID, in ReviewTokenRequest) (ReviewPreview, error) {
+	action := strings.ToLower(in.Action)
+	parts := strings.Split(in.Token, ".")
+	if len(parts) != 2 || parts[1] != action || (action != "approve" && action != "reject") {
+		return ReviewPreview{}, httpx.NewError(400, "INVALID_REVIEW_TOKEN", "Review token is invalid")
+	}
+	c, name, err := s.repo.ReviewData(ctx, id)
+	if err != nil {
+		return ReviewPreview{}, httpx.NewError(400, "INVALID_REVIEW_TOKEN", "Review token is invalid")
+	}
+	if c.ApprovalTokenUsedAt != nil {
+		return ReviewPreview{}, httpx.NewError(409, "REVIEW_TOKEN_ALREADY_USED", "Review token has already been used")
+	}
+	if c.ApprovalTokenExpiresAt == nil || time.Now().After(*c.ApprovalTokenExpiresAt) {
+		return ReviewPreview{}, httpx.NewError(400, "REVIEW_TOKEN_EXPIRED", "Review token has expired")
+	}
+	if c.Status != "PENDING" || c.ApprovalTokenHash == nil {
+		return ReviewPreview{}, httpx.NewError(400, "INVALID_REVIEW_TOKEN", "Review token is invalid")
+	}
+	sum := sha256.Sum256([]byte(parts[0]))
+	if fmt.Sprintf("%x", sum[:]) != *c.ApprovalTokenHash {
+		return ReviewPreview{}, httpx.NewError(400, "INVALID_REVIEW_TOKEN", "Review token is invalid")
+	}
+	return ReviewPreview{Valid: true, Action: action, ContributionID: c.ID, MemberName: name, ExpectedAmount: c.ExpectedAmount, LateFeeAmount: c.LateFeeAmount, PaidAmount: c.PaidAmount, PaymentMethod: c.PaymentMethod, TransactionReference: c.TransactionReference}, nil
+}
+func newReviewToken() (string, string, error) {
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		return "", "", fmt.Errorf("generate review token: %w", err)
+	}
+	raw := base64.RawURLEncoding.EncodeToString(value)
+	sum := sha256.Sum256([]byte(raw))
+	return raw, fmt.Sprintf("%x", sum[:]), nil
 }
 func (s *Service) Reject(ctx context.Context, in RejectionInput) error {
 	if in.Reason == "" {
@@ -96,7 +221,8 @@ func (s *Service) Reject(ctx context.Context, in RejectionInput) error {
 			return err
 		}
 		id := c.ID
-		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_REJECTED", Channel: "EMAIL", Recipient: email, Status: "PENDING"})
+		subject, message := "Contribution proof rejected", fmt.Sprintf("Your contribution of %s was rejected: %s. Sign in at %s/login and upload a new proof.", c.TotalDue().StringFixed(2), in.Reason, s.frontendURL)
+		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_REJECTED", Channel: "EMAIL", Recipient: email, Subject: &subject, Message: &message, Status: "PENDING"})
 		return err
 	})
 }
@@ -109,10 +235,10 @@ func (s *Service) ProcessOverdue(ctx context.Context, limit int) (int, error) {
 	if _, err = guard.Exec(ctx, `SELECT pg_advisory_xact_lock(73662411)`); err != nil {
 		return 0, err
 	}
-	if _, err = s.repo.MarkDueAsOverdue(ctx); err != nil {
+	if _, err = s.repo.AdvanceLifecycle(ctx, guard); err != nil {
 		return 0, err
 	}
-	items, err := s.repo.ListOverdueForReminders(ctx, limit)
+	items, err := s.repo.ListReminderCandidates(ctx, guard, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -122,7 +248,8 @@ func (s *Service) ProcessOverdue(ctx context.Context, limit int) (int, error) {
 			return 0, e
 		}
 		id := c.ID
-		if _, e = s.notifications.Create(ctx, s.pool, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_OVERDUE", Channel: "EMAIL", Recipient: u.Email, Status: "PENDING"}); e != nil {
+		subject, message := "Contribution overdue", fmt.Sprintf("Your contribution is overdue. Total amount due: %s. Please sign in and submit payment proof.", c.TotalDue().StringFixed(2))
+		if _, e = s.notifications.Create(ctx, guard, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_OVERDUE", Channel: "EMAIL", Recipient: u.Email, Subject: &subject, Message: &message, Status: "PENDING"}); e != nil {
 			return 0, e
 		}
 	}

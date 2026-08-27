@@ -52,6 +52,9 @@ func seed(t *testing.T, pool *pgxpool.Pool) fixture {
 	if err := pool.QueryRow(context.Background(), `INSERT INTO assistance_requests(user_id,amount_requested,reason,status,amount_approved,reviewed_by,reviewed_at) VALUES($1,75,'Medical','APPROVED',75,$2,NOW()) RETURNING id`, memberID, f.adminID).Scan(&f.requestID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(context.Background(), `INSERT INTO fund_transactions(user_id,type,direction,amount,description,recorded_by) VALUES($1,'ADJUSTMENT','IN',1000,'test opening balance',$1)`, f.adminID); err != nil {
+		t.Fatal(err)
+	}
 	return f
 }
 func newService(f fixture) *assistance.Service {

@@ -18,3 +18,12 @@ type User struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
+type ListFilter struct {
+	Status, Role, Search string
+	Limit, Offset        int
+}
+type UpdateInput struct {
+	FullName *string `json:"full_name"`
+	Email    *string `json:"email"`
+	Phone    *string `json:"phone"`
+}

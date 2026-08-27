@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"socialfund/internal/audit"
 	"socialfund/internal/contributionplan"
 	"socialfund/internal/database"
@@ -48,6 +49,56 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (User, error) {
 	}
 	return u, nil
 }
+func (s *Service) List(ctx context.Context, f ListFilter) ([]User, error) {
+	if f.Limit < 1 || f.Limit > 100 {
+		f.Limit = 20
+	}
+	return s.repo.List(ctx, f)
+}
+func (s *Service) Update(ctx context.Context, adminID, id uuid.UUID, in UpdateInput) (User, error) {
+	var out User
+	err := database.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		old, err := s.repo.LockByID(ctx, tx, id)
+		if err != nil {
+			return ErrNotFound
+		}
+		if old.Role != "MEMBER" {
+			return httpx.ErrValidation
+		}
+		if err = s.repo.Update(ctx, tx, id, in); err != nil {
+			return mapCreateError(err)
+		}
+		out, err = s.repo.LockByID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		admin := adminID
+		_, err = s.audit.Create(ctx, tx, audit.AuditLog{UserID: &admin, Action: "USER_UPDATED", EntityType: "USER", EntityID: id, OldData: auditData(old), NewData: auditData(out)})
+		return err
+	})
+	return out, err
+}
+func (s *Service) ChangeStatus(ctx context.Context, adminID, id uuid.UUID, activate bool) error {
+	return database.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		u, err := s.repo.LockByID(ctx, tx, id)
+		if err != nil {
+			return ErrNotFound
+		}
+		if u.Role != "MEMBER" {
+			return httpx.ErrValidation
+		}
+		from, to, action := "ACTIVE", "SUSPENDED", "USER_SUSPENDED"
+		if activate {
+			from, to, action = "SUSPENDED", "ACTIVE", "USER_ACTIVATED"
+		}
+		if err = s.repo.SetStatus(ctx, tx, id, from, to); err != nil {
+			return httpx.NewError(409, "INVALID_STATUS_TRANSITION", "User cannot be changed from the current status")
+		}
+		admin := adminID
+		_, err = s.audit.Create(ctx, tx, audit.AuditLog{UserID: &admin, Action: action, EntityType: "USER", EntityID: id, OldData: auditData(map[string]string{"status": from}), NewData: auditData(map[string]string{"status": to})})
+		return err
+	})
+}
 func (s *Service) CreateMember(ctx context.Context, adminID uuid.UUID, in CreateMemberRequest) (MemberResponse, error) {
 	startDate, err := validateCreateMember(in)
 	if err != nil {
@@ -65,7 +116,7 @@ func (s *Service) CreateMember(ctx context.Context, adminID uuid.UUID, in Create
 			value := strings.ToUpper(in.Reminder.Frequency)
 			reminderFrequency = &value
 		}
-		_, err = s.plans.CreateWithDB(ctx, tx, contributionplan.ContributionPlan{UserID: created.ID, Amount: in.Contribution.Amount, Frequency: strings.ToUpper(in.Contribution.Frequency), IntervalValue: in.Contribution.IntervalValue, DueDay: in.Contribution.DueDay, StartDate: startDate, ReminderEnabled: in.Reminder.Enabled, ReminderFrequency: reminderFrequency, ReminderInterval: in.Reminder.Interval, IsActive: true, CreatedBy: adminID})
+		_, err = s.plans.CreateWithDB(ctx, tx, contributionplan.ContributionPlan{UserID: created.ID, Amount: in.Contribution.Amount, Frequency: strings.ToUpper(in.Contribution.Frequency), IntervalValue: in.Contribution.IntervalValue, DueDay: in.Contribution.DueDay, StartDate: startDate, ReminderEnabled: in.Reminder.Enabled, ReminderFrequency: reminderFrequency, ReminderInterval: in.Reminder.Interval, LateFeeEnabled: in.Contribution.LateFeeEnabled, LateFeePercentage: in.Contribution.LateFeePercentage, GracePeriodDays: in.Contribution.GracePeriodDays, IsActive: true, CreatedBy: adminID})
 		if err != nil {
 			return fmt.Errorf("create contribution plan: %w", err)
 		}
@@ -102,6 +153,9 @@ func validateCreateMember(in CreateMemberRequest) (time.Time, error) {
 		return time.Time{}, httpx.ErrValidation
 	}
 	if frequency == "CUSTOM" && (in.Contribution.IntervalValue == nil || *in.Contribution.IntervalValue < 1) {
+		return time.Time{}, httpx.ErrValidation
+	}
+	if in.Contribution.GracePeriodDays < 0 || (in.Contribution.LateFeeEnabled && (in.Contribution.LateFeePercentage == nil || in.Contribution.LateFeePercentage.IsNegative() || in.Contribution.LateFeePercentage.GreaterThan(decimal.NewFromInt(100)))) {
 		return time.Time{}, httpx.ErrValidation
 	}
 	if in.Reminder.Enabled {

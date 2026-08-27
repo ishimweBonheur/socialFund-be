@@ -18,6 +18,9 @@ type ContributionPlan struct {
 	ReminderEnabled   bool
 	ReminderFrequency *string
 	ReminderInterval  *int
+	LateFeeEnabled    bool
+	LateFeePercentage *decimal.Decimal
+	GracePeriodDays   int
 	IsActive          bool
 	CreatedBy         uuid.UUID
 	CreatedAt         time.Time

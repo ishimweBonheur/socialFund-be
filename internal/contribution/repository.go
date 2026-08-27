@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"socialfund/internal/database"
+	"time"
 )
 
 type Repository interface {
@@ -15,25 +16,42 @@ type Repository interface {
 	Lock(context.Context, database.DBTX, uuid.UUID) (Contribution, string, error)
 	SetApproved(context.Context, database.DBTX, ApprovalInput) error
 	SetRejected(context.Context, database.DBTX, RejectionInput) error
-	MarkDueAsOverdue(context.Context) (int64, error)
-	ListOverdueForReminders(context.Context, int) ([]Contribution, error)
+	SubmitProof(context.Context, database.DBTX, ProofInput) error
+	SetReviewToken(context.Context, database.DBTX, uuid.UUID, string, time.Time) error
+	ListPending(context.Context, int, int) ([]ReviewItem, error)
+	Outstanding(context.Context, uuid.UUID) (Outstanding, error)
+	AdvanceLifecycle(context.Context, database.DBTX) (int64, error)
+	ListReminderCandidates(context.Context, database.DBTX, int) ([]Contribution, error)
+	ReviewData(context.Context, uuid.UUID) (Contribution, string, error)
 }
+
+func (r *PostgresRepository) ReviewData(ctx context.Context, id uuid.UUID) (Contribution, string, error) {
+	var name string
+	c, err := scanReview(r.db.QueryRow(ctx, `SELECT `+columns+`,u.full_name FROM contributions c JOIN users u ON u.id=c.user_id WHERE c.id=$1`, id), &name)
+	return c, name, err
+}
+func scanReview(row pgx.Row, name *string) (Contribution, error) {
+	var c Contribution
+	err := row.Scan(&c.ID, &c.UserID, &c.ContributionPlanID, &c.ExpectedAmount, &c.LateFeePercentage, &c.LateFeeAmount, &c.OverdueAt, &c.DueDate, &c.PaidAmount, &c.PaymentDate, &c.PaymentMethod, &c.TransactionReference, &c.ProofURL, &c.ProofUploadedAt, &c.Status, &c.RejectionReason, &c.ApprovedBy, &c.ApprovedAt, &c.ApprovalTokenHash, &c.ApprovalTokenExpiresAt, &c.ApprovalTokenUsedAt, &c.ApprovalTokenAction, &c.Notes, &c.CreatedAt, &c.UpdatedAt, name)
+	return c, err
+}
+
 type PostgresRepository struct{ db *pgxpool.Pool }
 
 func NewRepository(db *pgxpool.Pool) *PostgresRepository { return &PostgresRepository{db: db} }
 
-const columns = `id,user_id,contribution_plan_id,expected_amount,due_date,paid_amount,payment_date,payment_method,transaction_reference,proof_url,proof_uploaded_at,status,rejection_reason,approved_by,approved_at,approval_token_hash,approval_token_expires_at,approval_token_used_at,notes,created_at,updated_at`
+const columns = `c.id,c.user_id,c.contribution_plan_id,c.expected_amount,c.late_fee_percentage,c.late_fee_amount,c.overdue_at,c.due_date,c.paid_amount,c.payment_date,c.payment_method,c.transaction_reference,c.proof_url,c.proof_uploaded_at,c.status,c.rejection_reason,c.approved_by,c.approved_at,c.approval_token_hash,c.approval_token_expires_at,c.approval_token_used_at,c.approval_token_action,c.notes,c.created_at,c.updated_at`
 
 func scan(row pgx.Row) (Contribution, error) {
 	var c Contribution
-	err := row.Scan(&c.ID, &c.UserID, &c.ContributionPlanID, &c.ExpectedAmount, &c.DueDate, &c.PaidAmount, &c.PaymentDate, &c.PaymentMethod, &c.TransactionReference, &c.ProofURL, &c.ProofUploadedAt, &c.Status, &c.RejectionReason, &c.ApprovedBy, &c.ApprovedAt, &c.ApprovalTokenHash, &c.ApprovalTokenExpiresAt, &c.ApprovalTokenUsedAt, &c.Notes, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.UserID, &c.ContributionPlanID, &c.ExpectedAmount, &c.LateFeePercentage, &c.LateFeeAmount, &c.OverdueAt, &c.DueDate, &c.PaidAmount, &c.PaymentDate, &c.PaymentMethod, &c.TransactionReference, &c.ProofURL, &c.ProofUploadedAt, &c.Status, &c.RejectionReason, &c.ApprovedBy, &c.ApprovedAt, &c.ApprovalTokenHash, &c.ApprovalTokenExpiresAt, &c.ApprovalTokenUsedAt, &c.ApprovalTokenAction, &c.Notes, &c.CreatedAt, &c.UpdatedAt)
 	return c, err
 }
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (Contribution, error) {
-	return scan(r.db.QueryRow(ctx, `SELECT `+columns+` FROM contributions WHERE id=$1`, id))
+	return scan(r.db.QueryRow(ctx, `SELECT `+columns+` FROM contributions c WHERE c.id=$1`, id))
 }
 func (r *PostgresRepository) ListByUser(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Contribution, error) {
-	rows, err := r.db.Query(ctx, `SELECT `+columns+` FROM contributions WHERE user_id=$1 ORDER BY due_date DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
+	rows, err := r.db.Query(ctx, `SELECT `+columns+` FROM contributions c WHERE c.user_id=$1 ORDER BY c.due_date DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +73,7 @@ func (r *PostgresRepository) Create(ctx context.Context, c Contribution) (Contri
 func (r *PostgresRepository) Lock(ctx context.Context, db database.DBTX, id uuid.UUID) (Contribution, string, error) {
 	var c Contribution
 	var email string
-	err := db.QueryRow(ctx, `SELECT c.id,c.user_id,c.contribution_plan_id,c.expected_amount,c.due_date,c.paid_amount,c.payment_date,c.payment_method,c.transaction_reference,c.proof_url,c.proof_uploaded_at,c.status,c.rejection_reason,c.approved_by,c.approved_at,c.approval_token_hash,c.approval_token_expires_at,c.approval_token_used_at,c.notes,c.created_at,c.updated_at,u.email FROM contributions c JOIN users u ON u.id=c.user_id WHERE c.id=$1 FOR UPDATE OF c`, id).Scan(&c.ID, &c.UserID, &c.ContributionPlanID, &c.ExpectedAmount, &c.DueDate, &c.PaidAmount, &c.PaymentDate, &c.PaymentMethod, &c.TransactionReference, &c.ProofURL, &c.ProofUploadedAt, &c.Status, &c.RejectionReason, &c.ApprovedBy, &c.ApprovedAt, &c.ApprovalTokenHash, &c.ApprovalTokenExpiresAt, &c.ApprovalTokenUsedAt, &c.Notes, &c.CreatedAt, &c.UpdatedAt, &email)
+	err := db.QueryRow(ctx, `SELECT `+columns+`,u.email FROM contributions c JOIN users u ON u.id=c.user_id WHERE c.id=$1 FOR UPDATE OF c`, id).Scan(&c.ID, &c.UserID, &c.ContributionPlanID, &c.ExpectedAmount, &c.LateFeePercentage, &c.LateFeeAmount, &c.OverdueAt, &c.DueDate, &c.PaidAmount, &c.PaymentDate, &c.PaymentMethod, &c.TransactionReference, &c.ProofURL, &c.ProofUploadedAt, &c.Status, &c.RejectionReason, &c.ApprovedBy, &c.ApprovedAt, &c.ApprovalTokenHash, &c.ApprovalTokenExpiresAt, &c.ApprovalTokenUsedAt, &c.ApprovalTokenAction, &c.Notes, &c.CreatedAt, &c.UpdatedAt, &email)
 	return c, email, err
 }
 func (r *PostgresRepository) SetApproved(ctx context.Context, db database.DBTX, in ApprovalInput) error {
@@ -72,12 +90,74 @@ func (r *PostgresRepository) SetRejected(ctx context.Context, db database.DBTX, 
 	}
 	return err
 }
-func (r *PostgresRepository) MarkDueAsOverdue(ctx context.Context) (int64, error) {
-	tag, err := r.db.Exec(ctx, `UPDATE contributions SET status='OVERDUE',updated_at=NOW() WHERE status='DUE' AND due_date<CURRENT_DATE`)
+func (r *PostgresRepository) SubmitProof(ctx context.Context, db database.DBTX, in ProofInput) error {
+	tag, err := db.Exec(ctx, `UPDATE contributions SET paid_amount=$3,payment_date=NOW(),payment_method=$4,transaction_reference=$5,proof_url=$6,proof_uploaded_at=NOW(),status='PENDING',rejection_reason=NULL,updated_at=NOW() WHERE id=$1 AND user_id=$2 AND status IN ('DUE','OVERDUE','REJECTED')`, in.ContributionID, in.UserID, in.Amount, in.PaymentMethod, in.TransactionReference, in.ProofURL)
+	if err == nil && tag.RowsAffected() != 1 {
+		return ErrInvalidState
+	}
+	return err
+}
+func (r *PostgresRepository) SetReviewToken(ctx context.Context, db database.DBTX, id uuid.UUID, hash string, expires time.Time) error {
+	_, err := db.Exec(ctx, `UPDATE contributions SET approval_token_hash=$2,approval_token_expires_at=$3,approval_token_used_at=NULL,approval_token_action=NULL WHERE id=$1`, id, hash, expires)
+	return err
+}
+func (r *PostgresRepository) ListPending(ctx context.Context, limit, offset int) ([]ReviewItem, error) {
+	rows, err := r.db.Query(ctx, `SELECT `+columns+`,u.full_name,u.email FROM contributions c JOIN users u ON u.id=c.user_id WHERE c.status='PENDING' ORDER BY c.proof_uploaded_at LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]ReviewItem, 0)
+	for rows.Next() {
+		var item ReviewItem
+		var c Contribution
+		if err = rows.Scan(&c.ID, &c.UserID, &c.ContributionPlanID, &c.ExpectedAmount, &c.LateFeePercentage, &c.LateFeeAmount, &c.OverdueAt, &c.DueDate, &c.PaidAmount, &c.PaymentDate, &c.PaymentMethod, &c.TransactionReference, &c.ProofURL, &c.ProofUploadedAt, &c.Status, &c.RejectionReason, &c.ApprovedBy, &c.ApprovedAt, &c.ApprovalTokenHash, &c.ApprovalTokenExpiresAt, &c.ApprovalTokenUsedAt, &c.ApprovalTokenAction, &c.Notes, &c.CreatedAt, &c.UpdatedAt, &item.MemberName, &item.MemberEmail); err != nil {
+			return nil, err
+		}
+		item.Contribution = c
+		item.TotalDue = c.TotalDue()
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+func (r *PostgresRepository) Outstanding(ctx context.Context, userID uuid.UUID) (Outstanding, error) {
+	var o Outstanding
+	err := r.db.QueryRow(ctx, `SELECT COALESCE(SUM(expected_amount+late_fee_amount),0),COUNT(*) FROM contributions WHERE user_id=$1 AND status IN ('OVERDUE','REJECTED')`, userID).Scan(&o.OutstandingAmount, &o.OverdueCount)
+	return o, err
+}
+func (r *PostgresRepository) AdvanceLifecycle(ctx context.Context, db database.DBTX) (int64, error) {
+	_, err := db.Exec(ctx, `
+WITH plan_dates AS (
+    SELECT p.id plan_id,p.user_id,p.amount,
+           CASE p.frequency
+             WHEN 'MONTHLY' THEN (month_start + (LEAST(p.due_day,EXTRACT(DAY FROM month_start + INTERVAL '1 month - 1 day')::int)-1) * INTERVAL '1 day')::date
+             ELSE generated::date
+           END due_date
+    FROM contribution_plans p
+    CROSS JOIN LATERAL generate_series(
+      CASE WHEN p.frequency='MONTHLY' THEN date_trunc('month',p.start_date)::date ELSE p.start_date END,
+      LEAST(CURRENT_DATE,COALESCE(p.end_date,CURRENT_DATE)),
+      CASE p.frequency WHEN 'DAILY' THEN INTERVAL '1 day' WHEN 'WEEKLY' THEN INTERVAL '7 days' WHEN 'MONTHLY' THEN INTERVAL '1 month' ELSE make_interval(days=>p.interval_value) END
+    ) generated
+    CROSS JOIN LATERAL (SELECT date_trunc('month',generated)::date month_start) m
+    WHERE p.is_active
+)
+INSERT INTO contributions(user_id,contribution_plan_id,expected_amount,due_date,status)
+SELECT user_id,plan_id,amount,due_date,CASE WHEN due_date<=CURRENT_DATE THEN 'DUE' ELSE 'UPCOMING' END
+FROM plan_dates
+ON CONFLICT(contribution_plan_id,due_date) DO NOTHING`)
+	if err != nil {
+		return 0, err
+	}
+	_, err = db.Exec(ctx, `UPDATE contributions SET status='DUE',updated_at=NOW() WHERE status='UPCOMING' AND due_date<=CURRENT_DATE`)
+	if err != nil {
+		return 0, err
+	}
+	tag, err := db.Exec(ctx, `UPDATE contributions c SET status='OVERDUE',late_fee_percentage=CASE WHEN p.late_fee_enabled THEN p.late_fee_percentage END,late_fee_amount=CASE WHEN p.late_fee_enabled THEN ROUND(c.expected_amount*p.late_fee_percentage/100,2) ELSE 0 END,overdue_at=NOW(),updated_at=NOW() FROM contribution_plans p WHERE p.id=c.contribution_plan_id AND c.status='DUE' AND CURRENT_DATE>c.due_date+p.grace_period_days`)
 	return tag.RowsAffected(), err
 }
-func (r *PostgresRepository) ListOverdueForReminders(ctx context.Context, limit int) ([]Contribution, error) {
-	rows, err := r.db.Query(ctx, `SELECT c.id,c.user_id,c.contribution_plan_id,c.expected_amount,c.due_date,c.paid_amount,c.payment_date,c.payment_method,c.transaction_reference,c.proof_url,c.proof_uploaded_at,c.status,c.rejection_reason,c.approved_by,c.approved_at,c.approval_token_hash,c.approval_token_expires_at,c.approval_token_used_at,c.notes,c.created_at,c.updated_at FROM contributions c JOIN contribution_plans p ON p.id=c.contribution_plan_id WHERE c.status='OVERDUE' AND p.reminder_enabled AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.contribution_id=c.id AND n.type='CONTRIBUTION_OVERDUE' AND n.created_at>=NOW()-make_interval(days=>COALESCE(p.reminder_interval,CASE p.reminder_frequency WHEN 'WEEKLY' THEN 7 ELSE 1 END))) ORDER BY c.due_date LIMIT $1`, limit)
+func (r *PostgresRepository) ListReminderCandidates(ctx context.Context, db database.DBTX, limit int) ([]Contribution, error) {
+	rows, err := db.Query(ctx, `SELECT `+columns+` FROM contributions c JOIN contribution_plans p ON p.id=c.contribution_plan_id WHERE c.status IN ('OVERDUE','REJECTED') AND p.reminder_enabled AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.contribution_id=c.id AND n.type='CONTRIBUTION_OVERDUE' AND n.created_at>=NOW()-make_interval(days=>CASE p.reminder_frequency WHEN 'WEEKLY' THEN 7 WHEN 'CUSTOM' THEN p.reminder_interval ELSE 1 END)) ORDER BY c.due_date LIMIT $1 FOR UPDATE OF c SKIP LOCKED`, limit)
 	if err != nil {
 		return nil, err
 	}

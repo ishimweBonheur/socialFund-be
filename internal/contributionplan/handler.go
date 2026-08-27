@@ -15,7 +15,27 @@ func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/users/{userID}/active", h.active)
 	r.Post("/", h.create)
+	r.Patch("/{id}", h.update)
 	return r
+}
+func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	actor, _ := httpx.IdentityFrom(r.Context())
+	var p ContributionPlan
+	if json.NewDecoder(r.Body).Decode(&p) != nil {
+		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	out, err := h.service.Update(r.Context(), actor.UserID, id, p)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"data": out})
 }
 func (h *Handler) active(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "userID"))
