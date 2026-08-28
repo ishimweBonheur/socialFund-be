@@ -116,7 +116,7 @@ func main() {
 	}()
 
 	router := chi.NewRouter()
-	router.Use(middleware.Recoverer, httpx.RequestIDMiddleware, metricsRegistry.Middleware, httpx.LoggingMiddleware(logger))
+	router.Use(middleware.Recoverer, httpx.CORS(cfg.FrontendURL), httpx.RequestIDMiddleware, metricsRegistry.Middleware, httpx.LoggingMiddleware(logger))
 	if cfg.RateLimitEnabled {
 		router.Use(generalLimiter.Middleware)
 	}

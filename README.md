@@ -83,6 +83,8 @@ POST /api/v1/auth/google
 
 The backend validates the Google signature, audience, issuer, and expiration using `GOOGLE_CLIENT_ID`. It uses only the verified `sub`, `email`, and `email_verified` claims. A matching inactive account is activated and bound to the Google subject inside a transaction, activation/login audits are written, and the Social Fund JWT is issued only after commit.
 
+For system testing, migrations seed `ishimwebonheur078@gmail.com` as an administrator. Sign in with that verified Google account; its first successful login activates the account.
+
 Protected requests use:
 
 ```http
