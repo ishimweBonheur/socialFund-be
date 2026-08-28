@@ -6,6 +6,8 @@ import (
 	"github.com/google/uuid"
 	"net/http"
 	"socialfund/internal/httpx"
+	"strconv"
+	"strings"
 )
 
 type Handler struct{ service *Service }
@@ -13,10 +15,37 @@ type Handler struct{ service *Service }
 func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
+	r.Get("/", h.list)
 	r.Get("/users/{userID}/active", h.active)
 	r.Post("/", h.create)
 	r.Patch("/{id}", h.update)
 	return r
+}
+func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var active *bool
+	if raw := strings.TrimSpace(q.Get("active")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			httpx.WriteError(w, httpx.ErrValidation)
+			return
+		}
+		active = &value
+	}
+	items, total, err := h.service.List(r.Context(), strings.TrimSpace(q.Get("search")), active, limit, offset)
+	if err != nil {
+		httpx.WriteError(w, httpx.ErrInternal)
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": limit, "offset": offset, "total": total})
 }
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))

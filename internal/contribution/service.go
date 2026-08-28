@@ -112,6 +112,9 @@ func (s *Service) GetFor(ctx context.Context, id, userID uuid.UUID, isAdmin bool
 func (s *Service) ListPending(ctx context.Context, limit, offset int) ([]ReviewItem, error) {
 	return s.repo.ListPending(ctx, limit, offset)
 }
+func (s *Service) ListAdmin(ctx context.Context, search, status string, limit, offset int) ([]ReviewItem, int, error) {
+	return s.repo.ListAdmin(ctx, search, status, limit, offset)
+}
 func (s *Service) Outstanding(ctx context.Context, userID uuid.UUID) (Outstanding, error) {
 	return s.repo.Outstanding(ctx, userID)
 }

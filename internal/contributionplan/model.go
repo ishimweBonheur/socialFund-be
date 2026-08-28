@@ -26,3 +26,9 @@ type ContributionPlan struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
+
+type ListItem struct {
+	ContributionPlan
+	MemberName  string `json:"member_name"`
+	MemberEmail string `json:"member_email"`
+}

@@ -8,11 +8,35 @@ import (
 )
 
 type Repository interface {
+	List(context.Context, string, *bool, int, int) ([]ListItem, int, error)
 	GetActiveByUserID(context.Context, uuid.UUID) (ContributionPlan, error)
 	Create(context.Context, ContributionPlan) (ContributionPlan, error)
 	CreateWithDB(context.Context, database.DBTX, ContributionPlan) (ContributionPlan, error)
 	Lock(context.Context, database.DBTX, uuid.UUID) (ContributionPlan, error)
 	Update(context.Context, database.DBTX, ContributionPlan) error
+}
+
+func (r *PostgresRepository) List(ctx context.Context, search string, active *bool, limit, offset int) ([]ListItem, int, error) {
+	where := `WHERE ($1='' OR u.full_name ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%') AND ($2::boolean IS NULL OR p.is_active=$2)`
+	var total int
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM contribution_plans p JOIN users u ON u.id=p.user_id `+where, search, active).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.db.Query(ctx, `SELECT p.id,p.user_id,p.amount,p.frequency,p.interval_value,p.due_day,p.start_date,p.end_date,p.reminder_enabled,p.reminder_frequency,p.reminder_interval,p.late_fee_enabled,p.late_fee_percentage,p.grace_period_days,p.is_active,p.created_by,p.created_at,p.updated_at,u.full_name,u.email FROM contribution_plans p JOIN users u ON u.id=p.user_id `+where+` ORDER BY p.created_at DESC LIMIT $3 OFFSET $4`, search, active, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := make([]ListItem, 0)
+	for rows.Next() {
+		var item ListItem
+		p := &item.ContributionPlan
+		if err = rows.Scan(&p.ID, &p.UserID, &p.Amount, &p.Frequency, &p.IntervalValue, &p.DueDay, &p.StartDate, &p.EndDate, &p.ReminderEnabled, &p.ReminderFrequency, &p.ReminderInterval, &p.LateFeeEnabled, &p.LateFeePercentage, &p.GracePeriodDays, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &item.MemberName, &item.MemberEmail); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
 }
 
 func (r *PostgresRepository) Lock(ctx context.Context, db database.DBTX, id uuid.UUID) (ContributionPlan, error) {

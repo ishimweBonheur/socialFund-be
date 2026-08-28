@@ -19,10 +19,36 @@ type Repository interface {
 	SubmitProof(context.Context, database.DBTX, ProofInput) error
 	SetReviewToken(context.Context, database.DBTX, uuid.UUID, string, time.Time) error
 	ListPending(context.Context, int, int) ([]ReviewItem, error)
+	ListAdmin(context.Context, string, string, int, int) ([]ReviewItem, int, error)
 	Outstanding(context.Context, uuid.UUID) (Outstanding, error)
 	AdvanceLifecycle(context.Context, database.DBTX) (int64, error)
 	ListReminderCandidates(context.Context, database.DBTX, int) ([]Contribution, error)
 	ReviewData(context.Context, uuid.UUID) (Contribution, string, error)
+}
+
+func (r *PostgresRepository) ListAdmin(ctx context.Context, search, status string, limit, offset int) ([]ReviewItem, int, error) {
+	where := `WHERE ($1='' OR u.full_name ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%' OR COALESCE(c.transaction_reference,'') ILIKE '%'||$1||'%') AND ($2='' OR c.status=$2)`
+	var total int
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM contributions c JOIN users u ON u.id=c.user_id `+where, search, status).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.db.Query(ctx, `SELECT `+columns+`,u.full_name,u.email FROM contributions c JOIN users u ON u.id=c.user_id `+where+` ORDER BY c.created_at DESC LIMIT $3 OFFSET $4`, search, status, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := make([]ReviewItem, 0)
+	for rows.Next() {
+		var item ReviewItem
+		var c Contribution
+		if err = rows.Scan(&c.ID, &c.UserID, &c.ContributionPlanID, &c.ExpectedAmount, &c.LateFeePercentage, &c.LateFeeAmount, &c.OverdueAt, &c.DueDate, &c.PaidAmount, &c.PaymentDate, &c.PaymentMethod, &c.TransactionReference, &c.ProofURL, &c.ProofUploadedAt, &c.Status, &c.RejectionReason, &c.ApprovedBy, &c.ApprovedAt, &c.ApprovalTokenHash, &c.ApprovalTokenExpiresAt, &c.ApprovalTokenUsedAt, &c.ApprovalTokenAction, &c.Notes, &c.CreatedAt, &c.UpdatedAt, &item.MemberName, &item.MemberEmail); err != nil {
+			return nil, 0, err
+		}
+		item.Contribution = c
+		item.TotalDue = c.TotalDue()
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
 }
 
 func (r *PostgresRepository) ReviewData(ctx context.Context, id uuid.UUID) (Contribution, string, error) {

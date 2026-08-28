@@ -213,7 +213,11 @@ paths:
   /api/v1/admin/users/{id}/activate:
     post: {tags: [Users], summary: Restore suspended member (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/ID"}], responses: {"200": {description: Active}, "409": {$ref: "#/components/responses/Conflict"}}}
   /api/v1/contribution-plans/{id}:
-    patch: {tags: [Contribution Plans], summary: Update future contribution-plan configuration (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/ID"}], responses: {"200": {description: Updated plan}, "400": {$ref: "#/components/responses/ValidationError"}}}
+      patch: {tags: [Contribution Plans], summary: Update future contribution-plan configuration (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/ID"}], responses: {"200": {description: Updated plan}, "400": {$ref: "#/components/responses/ValidationError"}}}
+  /api/v1/contribution-plans/:
+    get: {tags: [Contribution Plans], summary: List all contribution plans (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/Limit"}, {$ref: "#/components/parameters/Offset"}, {name: search, in: query, schema: {type: string}}, {name: active, in: query, schema: {type: boolean}}], responses: {"200": {description: Paginated contribution plans}}}
+  /api/v1/admin/contributions/:
+    get: {tags: [Contributions], summary: List all contributions (ADMIN), security: [{bearerAuth: []}], parameters: [{$ref: "#/components/parameters/Limit"}, {$ref: "#/components/parameters/Offset"}, {name: search, in: query, schema: {type: string}}, {name: status, in: query, schema: {type: string}}], responses: {"200": {description: Paginated contributions across all statuses}}}
   /api/v1/dashboard/:
     get: {tags: [Dashboard], summary: Member dashboard, security: [{bearerAuth: []}], responses: {"200": {description: Member aggregates}}}
   /api/v1/admin/dashboard/:

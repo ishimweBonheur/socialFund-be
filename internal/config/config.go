@@ -55,11 +55,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	rateRPM, err := envInt("RATE_LIMIT_REQUESTS_PER_MINUTE", 120)
+	rateRPM, err := envInt("RATE_LIMIT_REQUESTS_PER_MINUTE", 600)
 	if err != nil {
 		return Config{}, err
 	}
-	authRPM, err := envInt("AUTH_RATE_LIMIT_REQUESTS_PER_MINUTE", 20)
+	authRPM, err := envInt("AUTH_RATE_LIMIT_REQUESTS_PER_MINUTE", 60)
 	if err != nil {
 		return Config{}, err
 	}

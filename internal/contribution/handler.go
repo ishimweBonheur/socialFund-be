@@ -107,8 +107,19 @@ func (h *Handler) proofURL(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) AdminRoutes() chi.Router {
 	r := chi.NewRouter()
+	r.Get("/", h.listAdmin)
 	r.Get("/pending", h.pending)
 	return r
+}
+func (h *Handler) listAdmin(w http.ResponseWriter, r *http.Request) {
+	l, o := pagination(r)
+	q := r.URL.Query()
+	items, total, err := h.service.ListAdmin(r.Context(), strings.TrimSpace(q.Get("search")), strings.ToUpper(strings.TrimSpace(q.Get("status"))), l, o)
+	if err != nil {
+		h.internal(w, r, "list_admin_contributions", err)
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o, "total": total})
 }
 func (h *Handler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
