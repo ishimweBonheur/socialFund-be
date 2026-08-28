@@ -116,9 +116,12 @@ func (s *Service) CreateMember(ctx context.Context, adminID uuid.UUID, in Create
 			value := strings.ToUpper(in.Reminder.Frequency)
 			reminderFrequency = &value
 		}
-		_, err = s.plans.CreateWithDB(ctx, tx, contributionplan.ContributionPlan{UserID: created.ID, Amount: in.Contribution.Amount, Frequency: strings.ToUpper(in.Contribution.Frequency), IntervalValue: in.Contribution.IntervalValue, DueDay: in.Contribution.DueDay, StartDate: startDate, ReminderEnabled: in.Reminder.Enabled, ReminderFrequency: reminderFrequency, ReminderInterval: in.Reminder.Interval, LateFeeEnabled: in.Contribution.LateFeeEnabled, LateFeePercentage: in.Contribution.LateFeePercentage, GracePeriodDays: in.Contribution.GracePeriodDays, IsActive: true, CreatedBy: adminID})
+		plan, err := s.plans.CreateWithDB(ctx, tx, contributionplan.ContributionPlan{UserID: created.ID, Amount: in.Contribution.Amount, Frequency: strings.ToUpper(in.Contribution.Frequency), IntervalValue: in.Contribution.IntervalValue, DueDay: in.Contribution.DueDay, StartDate: startDate, ReminderEnabled: in.Reminder.Enabled, ReminderFrequency: reminderFrequency, ReminderInterval: in.Reminder.Interval, LateFeeEnabled: in.Contribution.LateFeeEnabled, LateFeePercentage: in.Contribution.LateFeePercentage, GracePeriodDays: in.Contribution.GracePeriodDays, IsActive: true, CreatedBy: adminID})
 		if err != nil {
 			return fmt.Errorf("create contribution plan: %w", err)
+		}
+		if err = createInitialContribution(ctx, tx, plan); err != nil {
+			return fmt.Errorf("create initial contribution: %w", err)
 		}
 		subject := "Welcome to Social Fund"
 		message := welcomeMessage(in, s.frontendURL)
@@ -133,6 +136,26 @@ func (s *Service) CreateMember(ctx context.Context, adminID uuid.UUID, in Create
 		return MemberResponse{}, err
 	}
 	return responseFromUser(created), nil
+}
+
+func createInitialContribution(ctx context.Context, tx database.DBTX, plan contributionplan.ContributionPlan) error {
+	dueDate := plan.StartDate
+	if plan.Frequency == "MONTHLY" && plan.DueDay != nil {
+		lastDay := time.Date(plan.StartDate.Year(), plan.StartDate.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
+		day := *plan.DueDay
+		if day > lastDay {
+			day = lastDay
+		}
+		dueDate = time.Date(plan.StartDate.Year(), plan.StartDate.Month(), day, 0, 0, 0, 0, time.UTC)
+	}
+	status := "UPCOMING"
+	// A plan that starts today is immediately payable, even when its configured
+	// monthly due day is later in the month. Future plans remain unavailable.
+	if !plan.StartDate.After(time.Now().UTC()) {
+		status = "DUE"
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO contributions(user_id,contribution_plan_id,expected_amount,due_date,status) VALUES($1,$2,$3,$4,$5) ON CONFLICT(contribution_plan_id,due_date) DO NOTHING`, plan.UserID, plan.ID, plan.Amount, dueDate, status)
+	return err
 }
 
 func validateCreateMember(in CreateMemberRequest) (time.Time, error) {

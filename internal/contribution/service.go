@@ -38,6 +38,9 @@ type Service struct {
 }
 
 func (s *Service) RunOverdueScheduler(ctx context.Context, interval time.Duration, limit int) error {
+	if _, err := s.ProcessOverdue(ctx, limit); err != nil {
+		return err
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {

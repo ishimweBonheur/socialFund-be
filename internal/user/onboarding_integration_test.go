@@ -68,6 +68,7 @@ func TestCreateMemberTransaction(t *testing.T) {
 		t.Fatalf("unexpected member: %+v", created)
 	}
 	assertCount(t, pool, `SELECT count(*) FROM contribution_plans WHERE user_id=$1`, created.ID, 1)
+	assertCount(t, pool, `SELECT count(*) FROM contributions WHERE user_id=$1`, created.ID, 1)
 	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE user_id=$1 AND type='ACCOUNT_CREATED' AND status='PENDING'`, created.ID, 1)
 	assertCount(t, pool, `SELECT count(*) FROM audit_logs WHERE entity_id=$1 AND action='USER_CREATED'`, created.ID, 1)
 }
