@@ -51,6 +51,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-}
       S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-false}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8080}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-24h}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}

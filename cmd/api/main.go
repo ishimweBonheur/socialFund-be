@@ -60,7 +60,7 @@ func main() {
 	notificationRepo := notification.NewRepository(pool)
 	userService := user.NewService(pool, userRepo, planRepo, notificationRepo, auditRepo, cfg.FrontendURL)
 	planService := contributionplan.NewService(planRepo, pool, auditRepo)
-	contributionService := contribution.NewService(pool, contributionRepo, fundRepo, auditRepo, notificationRepo, userRepo, cfg.FrontendURL)
+	contributionService := contribution.NewService(pool, contributionRepo, fundRepo, auditRepo, notificationRepo, userRepo, cfg.FrontendURL, cfg.APIPublicURL)
 	assistanceService := assistance.NewService(pool, assistanceRepo, fundRepo, auditRepo, notificationRepo)
 	var proofStorage contribution.FileStorage
 	if cfg.StorageDriver == "s3" {
@@ -91,7 +91,7 @@ func main() {
 			logger.Error("invalid SMTP port", "error", parseErr)
 			os.Exit(1)
 		}
-		emailSender, senderErr := notification.NewGoMailSender(cfg.SMTPHost, port, cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom)
+		emailSender, senderErr := notification.NewGoMailSender(cfg.SMTPHost, port, cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom, proofStorage)
 		if senderErr != nil {
 			logger.Error("configure email sender", "error", senderErr)
 			os.Exit(1)
@@ -143,12 +143,14 @@ func main() {
 			r.Mount("/auth", auth.NewHandler(authService, logger).Routes())
 		}
 		r.Post("/contributions/{id}/review-token/validate", contributionHandler.ValidateToken)
+		r.Get("/contributions/{id}/proof/review", contributionHandler.ReviewProof)
 		r.Group(func(protected chi.Router) {
 			protected.Use(auth.Authenticate(tokenManager))
 			protected.Mount("/users", user.NewHandler(userService, logger).Routes())
 			protected.Mount("/contributions", contributionHandler.Routes(auth.RequireAdmin, authLimiter.Middleware))
 			protected.Mount("/assistance-requests", assistanceHandler.Routes(auth.RequireAdmin))
 			protected.Mount("/dashboard", dashboardHandler.MemberRoutes())
+			protected.With(authLimiter.Middleware).Mount("/notifications", notification.NewHandler(notificationService, logger).MemberRoutes())
 			protected.Group(func(adminOnly chi.Router) {
 				adminOnly.Use(auth.RequireAdmin)
 				adminOnly.Mount("/contribution-plans", contributionplan.NewHandler(planService).Routes())

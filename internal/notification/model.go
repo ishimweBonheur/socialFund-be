@@ -20,6 +20,11 @@ type Notification struct {
 	LastError           *string
 	NextRetryAt         *time.Time
 	SentAt              *time.Time
+	ReadAt              *time.Time
+	AttachmentKey       *string
+	ProofURL            *string
+	ApproveURL          *string
+	RejectURL           *string
 	CreatedAt           time.Time
 }
 type Filter struct {

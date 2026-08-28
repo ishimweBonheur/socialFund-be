@@ -15,6 +15,19 @@ type FileStorage interface {
 	Save(context.Context, string, io.Reader) (string, error)
 	Delete(context.Context, string) error
 	SignedURL(context.Context, string, time.Duration) (string, error)
+	Open(context.Context, string) (io.ReadCloser, string, error)
+}
+
+func (s *LocalFileStorage) Open(ctx context.Context, key string) (io.ReadCloser, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	name := filepath.Base(key)
+	file, err := os.Open(filepath.Join(s.root, name))
+	if err != nil {
+		return nil, "", fmt.Errorf("open proof file: %w", err)
+	}
+	return file, name, nil
 }
 
 type LocalFileStorage struct{ root, publicPrefix string }

@@ -34,6 +34,7 @@ type Service struct {
 	notifications notification.Writer
 	users         user.Repository
 	frontendURL   string
+	apiPublicURL  string
 }
 
 func (s *Service) RunOverdueScheduler(ctx context.Context, interval time.Duration, limit int) error {
@@ -56,7 +57,11 @@ func NewService(pool *pgxpool.Pool, repo Repository, fundWriter fund.Writer, aud
 	if len(frontendURLs) > 0 {
 		frontendURL = strings.TrimRight(frontendURLs[0], "/")
 	}
-	return &Service{pool: pool, repo: repo, fund: fundWriter, audit: auditWriter, notifications: notificationWriter, users: users, frontendURL: frontendURL}
+	apiPublicURL := ""
+	if len(frontendURLs) > 1 {
+		apiPublicURL = strings.TrimRight(frontendURLs[1], "/")
+	}
+	return &Service{pool: pool, repo: repo, fund: fundWriter, audit: auditWriter, notifications: notificationWriter, users: users, frontendURL: frontendURL, apiPublicURL: apiPublicURL}
 }
 func (s *Service) Approve(ctx context.Context, in ApprovalInput) error {
 	return database.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
@@ -160,10 +165,22 @@ func (s *Service) SubmitProof(ctx context.Context, in ProofInput) error {
 		id := c.ID
 		approveURL := fmt.Sprintf("%s/admin/contributions/%s/review?action=approve&token=%s.approve", s.frontendURL, c.ID, rawToken)
 		rejectURL := fmt.Sprintf("%s/admin/contributions/%s/review?action=reject&token=%s.reject", s.frontendURL, c.ID, rawToken)
-		subject, message := "Contribution proof submitted", fmt.Sprintf("Member: %s\nEmail: %s\nPaid amount: %s\nExpected contribution: %s\nLate fee: %s\nTotal due: %s\nPayment method: %s\nTransaction reference: %s\nDue date: %s\nProof: %s\n\nReview and approve: %s\nReview and reject: %s\n\nThese links open a confirmation page and do not change financial state.", memberName, email, in.Amount.StringFixed(2), c.ExpectedAmount.StringFixed(2), c.LateFeeAmount.StringFixed(2), c.TotalDue().StringFixed(2), in.PaymentMethod, in.TransactionReference, c.DueDate.Format("2006-01-02"), in.ProofURL, approveURL, rejectURL)
-		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: adminID, ContributionID: &id, Type: "PROOF_SUBMITTED", Channel: "EMAIL", Recipient: adminEmail, Subject: &subject, Message: &message, Status: "PENDING"})
+		proofURL := fmt.Sprintf("%s/api/v1/contributions/%s/proof/review?token=%s", s.apiPublicURL, c.ID, rawToken)
+		subject, message := "Contribution proof submitted", fmt.Sprintf("Member: %s\nEmail: %s\nPaid amount: %s\nExpected contribution: %s\nLate fee: %s\nTotal due: %s\nPayment method: %s\nTransaction reference: %s\nDue date: %s\n\nUse the buttons below to view the attached proof and choose a review action.", memberName, email, in.Amount.StringFixed(2), c.ExpectedAmount.StringFixed(2), c.LateFeeAmount.StringFixed(2), c.TotalDue().StringFixed(2), in.PaymentMethod, in.TransactionReference, c.DueDate.Format("2006-01-02"))
+		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: adminID, ContributionID: &id, Type: "PROOF_SUBMITTED", Channel: "EMAIL", Recipient: adminEmail, Subject: &subject, Message: &message, Status: "PENDING", AttachmentKey: &in.ProofURL, ProofURL: &proofURL, ApproveURL: &approveURL, RejectURL: &rejectURL})
 		return err
 	})
+}
+func (s *Service) ValidateProofToken(ctx context.Context, id uuid.UUID, token string) (Contribution, error) {
+	c, _, err := s.repo.ReviewData(ctx, id)
+	if err != nil || c.Status != "PENDING" || c.ApprovalTokenHash == nil || c.ApprovalTokenExpiresAt == nil || time.Now().After(*c.ApprovalTokenExpiresAt) {
+		return Contribution{}, httpx.NewError(400, "INVALID_REVIEW_TOKEN", "Review token is invalid or expired")
+	}
+	sum := sha256.Sum256([]byte(token))
+	if fmt.Sprintf("%x", sum[:]) != *c.ApprovalTokenHash {
+		return Contribution{}, httpx.NewError(400, "INVALID_REVIEW_TOKEN", "Review token is invalid or expired")
+	}
+	return c, nil
 }
 func (s *Service) ValidateReviewToken(ctx context.Context, id uuid.UUID, in ReviewTokenRequest) (ReviewPreview, error) {
 	action := strings.ToLower(in.Action)

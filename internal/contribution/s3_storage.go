@@ -54,3 +54,11 @@ func (s *S3Storage) SignedURL(ctx context.Context, key string, ttl time.Duration
 	}
 	return out.URL, nil
 }
+func (s *S3Storage) Open(ctx context.Context, key string) (io.ReadCloser, string, error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &s.bucket, Key: &key})
+	if err != nil {
+		return nil, "", fmt.Errorf("download proof: %w", err)
+	}
+	parts := strings.Split(key, "/")
+	return out.Body, parts[len(parts)-1], nil
+}

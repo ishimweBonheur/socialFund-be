@@ -1,0 +1,11 @@
+ALTER TABLE notifications DROP CONSTRAINT notifications_type_check;
+ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN (
+    'ACCOUNT_CREATED','CONTRIBUTION_DUE','CONTRIBUTION_OVERDUE','PROOF_SUBMITTED',
+    'CONTRIBUTION_APPROVED','CONTRIBUTION_REJECTED','ASSISTANCE_REQUESTED',
+    'ASSISTANCE_APPROVED','ASSISTANCE_REJECTED','ASSISTANCE_PAID',
+    'SUPPORT_REQUEST','SUPPORT_REQUEST_RECEIVED','CONTRIBUTION_REVIEW_REMINDER'
+));
+ALTER TABLE notifications DROP CONSTRAINT notifications_channel_check;
+ALTER TABLE notifications ADD CONSTRAINT notifications_channel_check CHECK (channel IN ('EMAIL','IN_APP'));
+ALTER TABLE notifications ADD COLUMN read_at TIMESTAMPTZ;
+CREATE INDEX notifications_user_unread_idx ON notifications (user_id, created_at DESC) WHERE read_at IS NULL;

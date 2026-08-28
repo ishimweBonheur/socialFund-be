@@ -3,7 +3,10 @@ package contribution
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
@@ -24,6 +27,39 @@ type Handler struct {
 	service *Service
 	storage FileStorage
 	logger  *slog.Logger
+}
+
+func (h *Handler) ReviewProof(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	c, err := h.service.ValidateProofToken(r.Context(), id, r.URL.Query().Get("token"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if c.ProofURL == nil {
+		httpx.WriteError(w, httpx.NewError(404, "PROOF_REQUIRED", "Contribution has no proof"))
+		return
+	}
+	reader, filename, err := h.storage.Open(r.Context(), *c.ProofURL)
+	if err != nil {
+		httpx.WriteError(w, httpx.NewError(503, "STORAGE_UNAVAILABLE", "Proof storage is temporarily unavailable"))
+		return
+	}
+	defer reader.Close()
+	contentType := mime.TypeByExtension(filepath.Ext(filename))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if _, err = io.Copy(w, reader); err != nil {
+		h.logger.WarnContext(r.Context(), "stream proof failed", "error", err)
+	}
 }
 
 func NewHandler(service *Service, storage FileStorage, logger *slog.Logger) *Handler {

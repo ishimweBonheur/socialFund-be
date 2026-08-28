@@ -108,6 +108,23 @@ func (f *fakeEmailSender) SendAccountCreated(_ context.Context, data AccountCrea
 	f.data = data
 	return f.err
 }
+func (f *fakeEmailSender) SendNotification(context.Context, Notification) error { return f.err }
+
+func TestNotificationTemplateUsesBrandAndStatus(t *testing.T) {
+	subject, message := "Contribution approved", "Your contribution was approved successfully."
+	htmlBody, plainBody, err := renderNotification(Notification{Type: "CONTRIBUTION_APPROVED", Subject: &subject, Message: &message})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"#0f9d58", "SUCCESS", subject, message} {
+		if !strings.Contains(htmlBody, value) {
+			t.Errorf("HTML body missing %q", value)
+		}
+	}
+	if plainBody != message {
+		t.Fatalf("plain body=%q", plainBody)
+	}
+}
 
 type unusedSender struct{}
 

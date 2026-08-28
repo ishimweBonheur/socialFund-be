@@ -24,6 +24,7 @@ type Config struct {
 	HTTPAddress                        string
 	AppEnv                             string
 	FrontendURL                        string
+	APIPublicURL                       string
 	JWTSecret                          string
 	JWTExpiration                      time.Duration
 	GoogleClientID                     string
@@ -97,7 +98,7 @@ func Load() (Config, error) {
 	}
 	return Config{
 		DatabaseURL: databaseURL, MaxConns: maxConns, MinConns: minConns, MaxConnLifetime: maxLifetime, MaxConnIdleTime: maxIdle, RateLimitEnabled: rateEnabled, RateLimitRPM: rateRPM, AuthRateLimitRPM: authRPM, StorageDriver: driver, StorageLocalPath: env("STORAGE_LOCAL_PATH", "./uploads"), S3Endpoint: os.Getenv("S3_ENDPOINT"), S3Region: os.Getenv("S3_REGION"), S3Bucket: os.Getenv("S3_BUCKET"), S3AccessKey: os.Getenv("S3_ACCESS_KEY"), S3SecretKey: os.Getenv("S3_SECRET_KEY"), S3UsePathStyle: pathStyle,
-		HTTPAddress: httpAddress, AppEnv: env("APP_ENV", "development"), FrontendURL: env("FRONTEND_URL", "http://localhost:3000"), JWTSecret: jwtSecret, JWTExpiration: jwtExpiration, GoogleClientID: googleClientID,
+		HTTPAddress: httpAddress, AppEnv: env("APP_ENV", "development"), FrontendURL: env("FRONTEND_URL", "http://localhost:3000"), APIPublicURL: env("API_PUBLIC_URL", "http://localhost:"+port), JWTSecret: jwtSecret, JWTExpiration: jwtExpiration, GoogleClientID: googleClientID,
 		SMTPHost: os.Getenv("SMTP_HOST"), SMTPPort: env("SMTP_PORT", "1025"), SMTPUsername: os.Getenv("SMTP_USERNAME"), SMTPPassword: os.Getenv("SMTP_PASSWORD"), SMTPFrom: env("SMTP_FROM", "social-fund@example.test"),
 	}, nil
 }
