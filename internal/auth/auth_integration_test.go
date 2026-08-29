@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"socialfund/internal/audit"
 	"socialfund/internal/auth"
+	"socialfund/internal/testutil"
 	"socialfund/internal/user"
 )
 
@@ -31,6 +32,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	if url == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
+	testutil.RequireDisposableDatabase(t, url)
 	pool, err := pgxpool.New(context.Background(), url)
 	if err != nil {
 		t.Fatal(err)

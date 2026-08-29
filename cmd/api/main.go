@@ -150,6 +150,7 @@ func main() {
 			protected.Mount("/contributions", contributionHandler.Routes(auth.RequireAdmin, authLimiter.Middleware))
 			protected.Mount("/assistance-requests", assistanceHandler.Routes(auth.RequireAdmin))
 			protected.Mount("/dashboard", dashboardHandler.MemberRoutes())
+			protected.Mount("/fund", fund.NewHandler(fundRepo, logger).MemberRoutes())
 			protected.With(authLimiter.Middleware).Mount("/notifications", notification.NewHandler(notificationService, logger).MemberRoutes())
 			protected.Group(func(adminOnly chi.Router) {
 				adminOnly.Use(auth.RequireAdmin)

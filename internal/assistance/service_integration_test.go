@@ -11,6 +11,7 @@ import (
 	"socialfund/internal/audit"
 	"socialfund/internal/fund"
 	"socialfund/internal/notification"
+	"socialfund/internal/testutil"
 	"strings"
 	"testing"
 )
@@ -27,6 +28,7 @@ func openPool(t *testing.T) *pgxpool.Pool {
 	if url == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
+	testutil.RequireDisposableDatabase(t, url)
 	pool, err := pgxpool.New(context.Background(), url)
 	if err != nil {
 		t.Fatal(err)

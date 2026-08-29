@@ -85,7 +85,7 @@ func (s *Service) Approve(ctx context.Context, in ApprovalInput) error {
 			return err
 		}
 		id := c.ID
-		if _, err = s.fund.Create(ctx, tx, fund.FundTransaction{UserID: c.UserID, Type: "CONTRIBUTION", Direction: "IN", Amount: *c.PaidAmount, ContributionID: &id, RecordedBy: in.AdminID}); err != nil {
+		if _, err = s.fund.Create(ctx, tx, fund.FundTransaction{UserID: c.UserID, Type: "CONTRIBUTION", Direction: "IN", Amount: *c.PaidAmount, ContributionID: &id, Reference: c.TransactionReference, RecordedBy: in.AdminID}); err != nil {
 			return fmt.Errorf("create ledger entry: %w", err)
 		}
 		oldData, _ := json.Marshal(map[string]string{"status": c.Status})

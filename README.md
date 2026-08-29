@@ -139,19 +139,26 @@ Warning: `docker compose down -v` permanently deletes the local named database v
 
 ## Development Checks
 
-Unit and compile checks run without a database. Financial integration tests run when `TEST_DATABASE_URL` is set to an already migrated disposable database:
+Unit and compile checks run without a database. Integration tests run only when `TEST_DATABASE_URL` names a disposable database ending in `_test`. Compose provides one on port 55432 with its data directory held in memory:
 
 ```sh
 go test ./...
 go vet ./...
 ```
 
-PowerShell example against the Compose PostgreSQL port:
+PowerShell example:
 
 ```powershell
-$env:TEST_DATABASE_URL = "postgres://app:password@localhost:5432/socialfund?sslmode=disable"
-go test ./internal/service -count=1
+docker compose --profile test up -d postgres-test
+$env:DATABASE_URL = "postgres://test:test@localhost:55432/socialfund_test?sslmode=disable"
+go run ./cmd/migrate -direction up
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+Remove-Item Env:DATABASE_URL
+go test ./internal/... -count=1
+docker compose --profile test stop postgres-test
 ```
+
+The test guard rejects the application database even if it is accidentally assigned to `TEST_DATABASE_URL`. Stopping the test container discards all test data.
 
 The integration suite covers successful contribution approval, rollback after a late transaction failure, concurrent double approval, assistance rollback, and duplicate disbursement.
 

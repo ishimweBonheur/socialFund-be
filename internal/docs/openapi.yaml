@@ -189,6 +189,40 @@ paths:
         - {$ref: "#/components/parameters/Limit"}
         - {$ref: "#/components/parameters/Offset"}
       responses: {"200": {description: Ledger transactions}}
+  /api/v1/fund/summary:
+    get:
+      tags: [Fund]
+      summary: Get the authenticated member's contribution and assistance totals
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Personal transaction totals}}
+  /api/v1/fund/transactions:
+    get:
+      tags: [Fund]
+      summary: List only the authenticated member's completed transactions
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: type, in: query, schema: {type: string, enum: [CONTRIBUTION, ASSISTANCE]} }
+        - {name: date_from, in: query, schema: {type: string, format: date}}
+        - {name: date_to, in: query, schema: {type: string, format: date}}
+      responses: {"200": {description: Personal transaction history}}
+  /api/v1/fund/statement.pdf:
+    get:
+      tags: [Fund]
+      summary: Download the authenticated member's PDF statement
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: PDF statement, content: {application/pdf: {schema: {type: string, format: binary}}}}}
+  /api/v1/admin/fund/statement.pdf:
+    get:
+      tags: [Fund]
+      summary: Download a filtered organization or member PDF statement
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: user_id, in: query, schema: {type: string, format: uuid}}
+        - {name: type, in: query, schema: {type: string}}
+        - {name: direction, in: query, schema: {type: string, enum: [IN, OUT]}}
+        - {name: date_from, in: query, schema: {type: string, format: date}}
+        - {name: date_to, in: query, schema: {type: string, format: date}}
+      responses: {"200": {description: PDF statement, content: {application/pdf: {schema: {type: string, format: binary}}}}}
   /api/v1/admin/audit-logs/:
     get:
       tags: [Audit]
