@@ -19,7 +19,9 @@ type Repository interface {
 }
 type PostgresRepository struct{ db *pgxpool.Pool }
 
-func NewRepository(db *pgxpool.Pool) *PostgresRepository { return &PostgresRepository{db: db} }
+func NewRepository(db *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{db: db}
+}
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (AssistanceRequest, error) {
 	var a AssistanceRequest
 	err := r.db.QueryRow(ctx, `SELECT id,user_id,amount_requested,reason,description,attachment_url,status,amount_approved,reviewed_by,reviewed_at,rejection_reason,amount_disbursed,disbursement_method,disbursement_reference,disbursed_by,disbursed_at,created_at,updated_at FROM assistance_requests WHERE id=$1`, id).Scan(&a.ID, &a.UserID, &a.AmountRequested, &a.Reason, &a.Description, &a.AttachmentURL, &a.Status, &a.AmountApproved, &a.ReviewedBy, &a.ReviewedAt, &a.RejectionReason, &a.AmountDisbursed, &a.DisbursementMethod, &a.DisbursementReference, &a.DisbursedBy, &a.DisbursedAt, &a.CreatedAt, &a.UpdatedAt)

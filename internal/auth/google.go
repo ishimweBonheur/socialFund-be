@@ -8,7 +8,9 @@ import (
 
 type GoogleVerifier struct{ clientID string }
 
-func NewGoogleVerifier(clientID string) *GoogleVerifier { return &GoogleVerifier{clientID: clientID} }
+func NewGoogleVerifier(clientID string) *GoogleVerifier {
+	return &GoogleVerifier{clientID: clientID}
+}
 func (v *GoogleVerifier) Verify(ctx context.Context, credential string) (VerifiedIdentity, error) {
 	payload, err := idtoken.Validate(ctx, credential, v.clientID)
 	if err != nil {

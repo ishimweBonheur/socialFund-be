@@ -105,7 +105,9 @@ func (s *Service) SubmitSupportRequest(ctx context.Context, in SupportRequestInp
 		return err
 	})
 }
-func (s *Service) MarkSent(ctx context.Context, id uuid.UUID) error { return s.repo.MarkSent(ctx, id) }
+func (s *Service) MarkSent(ctx context.Context, id uuid.UUID) error {
+	return s.repo.MarkSent(ctx, id)
+}
 func (s *Service) MarkFailed(ctx context.Context, id uuid.UUID, message string, attempt int) error {
 	delay := time.Minute * time.Duration(1<<min(attempt, 6))
 	return s.repo.MarkFailed(ctx, id, message, time.Now().Add(delay))

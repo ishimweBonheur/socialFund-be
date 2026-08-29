@@ -28,7 +28,10 @@ type capture struct {
 	status int
 }
 
-func (c *capture) WriteHeader(s int) { c.status = s; c.ResponseWriter.WriteHeader(s) }
+func (c *capture) WriteHeader(s int) {
+	c.status = s
+	c.ResponseWriter.WriteHeader(s)
+}
 func (r *Registry) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()

@@ -16,7 +16,11 @@ type Handler struct {
 func NewHandler(service *Service, logger *slog.Logger) *Handler {
 	return &Handler{service: service, logger: logger}
 }
-func (h *Handler) Routes() chi.Router { r := chi.NewRouter(); r.Post("/google", h.google); return r }
+func (h *Handler) Routes() chi.Router {
+	r := chi.NewRouter()
+	r.Post("/google", h.google)
+	return r
+}
 func (h *Handler) google(w http.ResponseWriter, r *http.Request) {
 	var request GoogleLoginRequest
 	decoder := json.NewDecoder(r.Body)

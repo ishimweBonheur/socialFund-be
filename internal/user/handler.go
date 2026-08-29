@@ -20,7 +20,11 @@ type Handler struct {
 func NewHandler(service *Service, logger *slog.Logger) *Handler {
 	return &Handler{service: service, logger: logger}
 }
-func (h *Handler) Routes() chi.Router { r := chi.NewRouter(); r.Get("/{id}", h.get); return r }
+func (h *Handler) Routes() chi.Router {
+	r := chi.NewRouter()
+	r.Get("/{id}", h.get)
+	return r
+}
 func (h *Handler) AdminRoutes() chi.Router {
 	r := chi.NewRouter()
 	r.Post("/", h.createMember)
@@ -60,8 +64,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.WriteJSON(w, 200, map[string]any{"data": out})
 }
-func (h *Handler) suspend(w http.ResponseWriter, r *http.Request)  { h.status(w, r, false) }
-func (h *Handler) activate(w http.ResponseWriter, r *http.Request) { h.status(w, r, true) }
+func (h *Handler) suspend(w http.ResponseWriter, r *http.Request) {
+	h.status(w, r, false)
+}
+
+func (h *Handler) activate(w http.ResponseWriter, r *http.Request) {
+	h.status(w, r, true)
+}
 func (h *Handler) status(w http.ResponseWriter, r *http.Request, activate bool) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {

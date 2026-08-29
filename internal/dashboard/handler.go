@@ -16,9 +16,20 @@ type Handler struct {
 	logger *slog.Logger
 }
 
-func NewHandler(db *pgxpool.Pool, l *slog.Logger) *Handler { return &Handler{db: db, logger: l} }
-func (h *Handler) MemberRoutes() chi.Router                { r := chi.NewRouter(); r.Get("/", h.member); return r }
-func (h *Handler) AdminRoutes() chi.Router                 { r := chi.NewRouter(); r.Get("/", h.admin); return r }
+func NewHandler(db *pgxpool.Pool, l *slog.Logger) *Handler {
+	return &Handler{db: db, logger: l}
+}
+func (h *Handler) MemberRoutes() chi.Router {
+	r := chi.NewRouter()
+	r.Get("/", h.member)
+	return r
+}
+
+func (h *Handler) AdminRoutes() chi.Router {
+	r := chi.NewRouter()
+	r.Get("/", h.admin)
+	return r
+}
 
 type MemberSummary struct {
 	TotalContributed   decimal.Decimal  `json:"total_contributed"`

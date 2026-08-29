@@ -51,7 +51,9 @@ func (r *PostgresRepository) Update(ctx context.Context, db database.DBTX, p Con
 
 type PostgresRepository struct{ db *pgxpool.Pool }
 
-func NewRepository(db *pgxpool.Pool) *PostgresRepository { return &PostgresRepository{db: db} }
+func NewRepository(db *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{db: db}
+}
 func (r *PostgresRepository) GetActiveByUserID(ctx context.Context, userID uuid.UUID) (ContributionPlan, error) {
 	var p ContributionPlan
 	err := r.db.QueryRow(ctx, `SELECT id,user_id,amount,frequency,interval_value,due_day,start_date,end_date,reminder_enabled,reminder_frequency,reminder_interval,late_fee_enabled,late_fee_percentage,grace_period_days,is_active,created_by,created_at,updated_at FROM contribution_plans WHERE user_id=$1 AND is_active`, userID).Scan(&p.ID, &p.UserID, &p.Amount, &p.Frequency, &p.IntervalValue, &p.DueDay, &p.StartDate, &p.EndDate, &p.ReminderEnabled, &p.ReminderFrequency, &p.ReminderInterval, &p.LateFeeEnabled, &p.LateFeePercentage, &p.GracePeriodDays, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)

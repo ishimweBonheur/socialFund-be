@@ -34,4 +34,6 @@ type Contribution struct {
 	UpdatedAt              time.Time
 }
 
-func (c Contribution) TotalDue() decimal.Decimal { return c.ExpectedAmount.Add(c.LateFeeAmount) }
+func (c Contribution) TotalDue() decimal.Decimal {
+	return c.ExpectedAmount.Add(c.LateFeeAmount)
+}

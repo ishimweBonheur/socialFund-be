@@ -12,7 +12,9 @@ import (
 
 type Handler struct{ service *Service }
 
-func NewHandler(service *Service) *Handler { return &Handler{service: service} }
+func NewHandler(service *Service) *Handler {
+	return &Handler{service: service}
+}
 func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/", h.list)
@@ -92,4 +94,6 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, 201, created)
 }
-func jsonResponse(w http.ResponseWriter, status int, v any) { httpx.WriteJSON(w, status, v) }
+func jsonResponse(w http.ResponseWriter, status int, v any) {
+	httpx.WriteJSON(w, status, v)
+}

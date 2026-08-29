@@ -12,7 +12,9 @@ type Error struct {
 	Status  int    `json:"-"`
 }
 
-func (e *Error) Error() string { return e.Code }
+func (e *Error) Error() string {
+	return e.Code
+}
 func NewError(status int, code, message string) *Error {
 	return &Error{Status: status, Code: code, Message: message}
 }

@@ -101,4 +101,7 @@ func (s *Service) LoginGoogle(ctx context.Context, credential string) (LoginResp
 	}
 	return LoginResponse{AccessToken: token, TokenType: "Bearer", ExpiresIn: expires, User: UserResponse{ID: account.ID.String(), FullName: account.FullName, Email: account.Email, Role: account.Role, Status: account.Status}}, nil
 }
-func jsonData(value any) json.RawMessage { data, _ := json.Marshal(value); return data }
+func jsonData(value any) json.RawMessage {
+	data, _ := json.Marshal(value)
+	return data
+}

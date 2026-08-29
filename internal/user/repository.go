@@ -57,7 +57,9 @@ func (r *PostgresRepository) SetStatus(ctx context.Context, db database.DBTX, id
 
 type PostgresRepository struct{ db *pgxpool.Pool }
 
-func NewRepository(db *pgxpool.Pool) *PostgresRepository { return &PostgresRepository{db: db} }
+func NewRepository(db *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{db: db}
+}
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return r.get(ctx, `SELECT id,full_name,email,phone,google_id,role,status,last_login_at,created_by,created_at,updated_at FROM users WHERE id=$1`, id)

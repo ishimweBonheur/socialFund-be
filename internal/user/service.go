@@ -218,4 +218,7 @@ func welcomeMessage(in CreateMemberRequest, frontendURL string) string {
 	}
 	return fmt.Sprintf("Hello %s,\n\nYour Social Fund account has been created.\n\nName: %s\nEmail: %s\nPhone: %s\nContribution: %s\nContribution Frequency: %s%s\n\nYour account is currently inactive.\n\nTo activate your account, access Social Fund and sign in using Google with:\n%s\n\nAccess Social Fund: %s/login\n\nYour account will become active only after successful Google verification.", in.FullName, in.FullName, in.Email, in.Phone, in.Contribution.Amount.StringFixed(2), strings.Title(strings.ToLower(in.Contribution.Frequency)), due, in.Email, frontendURL)
 }
-func auditData(value any) json.RawMessage { data, _ := json.Marshal(value); return data }
+func auditData(value any) json.RawMessage {
+	data, _ := json.Marshal(value)
+	return data
+}

@@ -18,7 +18,11 @@ type Handler struct {
 func NewHandler(repo Reader, logger *slog.Logger) *Handler {
 	return &Handler{repo: repo, logger: logger}
 }
-func (h *Handler) Routes() chi.Router { r := chi.NewRouter(); r.Get("/", h.list); return r }
+func (h *Handler) Routes() chi.Router {
+	r := chi.NewRouter()
+	r.Get("/", h.list)
+	return r
+}
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	l, _ := strconv.Atoi(q.Get("limit"))

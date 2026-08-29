@@ -85,7 +85,9 @@ type fakeRepository struct {
 func (f *fakeRepository) Create(context.Context, database.DBTX, Notification) (Notification, error) {
 	return Notification{}, nil
 }
-func (f *fakeRepository) ListReady(context.Context, int) ([]Notification, error) { return f.items, nil }
+func (f *fakeRepository) ListReady(context.Context, int) ([]Notification, error) {
+	return f.items, nil
+}
 func (f *fakeRepository) MarkSent(_ context.Context, id uuid.UUID) error {
 	f.sent = append(f.sent, id)
 	return nil
@@ -108,7 +110,9 @@ func (f *fakeEmailSender) SendAccountCreated(_ context.Context, data AccountCrea
 	f.data = data
 	return f.err
 }
-func (f *fakeEmailSender) SendNotification(context.Context, Notification) error { return f.err }
+func (f *fakeEmailSender) SendNotification(context.Context, Notification) error {
+	return f.err
+}
 
 func TestNotificationTemplateUsesBrandAndStatus(t *testing.T) {
 	subject, message := "Contribution approved", "Your contribution was approved successfully."
@@ -128,7 +132,9 @@ func TestNotificationTemplateUsesBrandAndStatus(t *testing.T) {
 
 type unusedSender struct{}
 
-func (unusedSender) Send(context.Context, Notification) error { return nil }
+func (unusedSender) Send(context.Context, Notification) error {
+	return nil
+}
 func TestWorkerMarksAccountCreatedSent(t *testing.T) {
 	id := uuid.New()
 	repo := &fakeRepository{items: []Notification{{ID: id, UserID: uuid.New(), Type: "ACCOUNT_CREATED", Recipient: "member@example.com", Attempts: 1}}, data: sampleData()}

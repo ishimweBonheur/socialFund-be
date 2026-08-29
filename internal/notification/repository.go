@@ -70,7 +70,9 @@ func (r *PostgresRepository) Retry(ctx context.Context, db database.DBTX, id uui
 
 type PostgresRepository struct{ db *pgxpool.Pool }
 
-func NewRepository(db *pgxpool.Pool) *PostgresRepository { return &PostgresRepository{db: db} }
+func NewRepository(db *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{db: db}
+}
 func (r *PostgresRepository) Create(ctx context.Context, db database.DBTX, n Notification) (Notification, error) {
 	err := db.QueryRow(ctx, `INSERT INTO notifications(user_id,contribution_id,assistance_request_id,type,channel,recipient,subject,message,status,attachment_key,proof_url,approve_url,reject_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id,attempts,created_at`, n.UserID, n.ContributionID, n.AssistanceRequestID, n.Type, n.Channel, n.Recipient, n.Subject, n.Message, n.Status, n.AttachmentKey, n.ProofURL, n.ApproveURL, n.RejectURL).Scan(&n.ID, &n.Attempts, &n.CreatedAt)
 	return n, err

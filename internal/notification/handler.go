@@ -18,7 +18,9 @@ type Handler struct {
 	l *slog.Logger
 }
 
-func NewHandler(s *Service, l *slog.Logger) *Handler { return &Handler{s: s, l: l} }
+func NewHandler(s *Service, l *slog.Logger) *Handler {
+	return &Handler{s: s, l: l}
+}
 func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/", h.list)

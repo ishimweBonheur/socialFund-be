@@ -64,7 +64,9 @@ func scanReview(row pgx.Row, name *string) (Contribution, error) {
 
 type PostgresRepository struct{ db *pgxpool.Pool }
 
-func NewRepository(db *pgxpool.Pool) *PostgresRepository { return &PostgresRepository{db: db} }
+func NewRepository(db *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{db: db}
+}
 
 const columns = `c.id,c.user_id,c.contribution_plan_id,c.expected_amount,c.late_fee_percentage,c.late_fee_amount,c.overdue_at,c.due_date,c.paid_amount,c.payment_date,c.payment_method,c.transaction_reference,c.proof_url,c.proof_uploaded_at,c.status,c.rejection_reason,c.approved_by,c.approved_at,c.approval_token_hash,c.approval_token_expires_at,c.approval_token_used_at,c.approval_token_action,c.notes,c.created_at,c.updated_at`
 
