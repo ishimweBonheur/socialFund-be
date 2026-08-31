@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"socialfund/internal/audit"
 	"socialfund/internal/database"
@@ -25,6 +26,7 @@ var ErrInvalidState = errors.New("contribution is not pending")
 var ErrInvalidAmount = errors.New("paid amount must be positive")
 var ErrForbidden = errors.New("contribution does not belong to member")
 var ErrProofRequired = errors.New("payment proof is required")
+var ErrDuplicateTransactionReference = errors.New("transaction reference has already been used")
 
 type Service struct {
 	pool          *pgxpool.Pool
@@ -119,6 +121,7 @@ func (s *Service) Outstanding(ctx context.Context, userID uuid.UUID) (Outstandin
 	return s.repo.Outstanding(ctx, userID)
 }
 func (s *Service) SubmitProof(ctx context.Context, in ProofInput) error {
+	in.TransactionReference = strings.ToUpper(strings.TrimSpace(in.TransactionReference))
 	methods := map[string]bool{"MOBILE_MONEY": true, "BANK_TRANSFER": true, "CASH": true, "OTHER": true}
 	if !in.Amount.IsPositive() || !methods[in.PaymentMethod] || in.TransactionReference == "" || in.ProofURL == "" {
 		return ErrInvalidAmount
@@ -139,6 +142,10 @@ func (s *Service) SubmitProof(ctx context.Context, in ProofInput) error {
 		}
 		resubmitted := c.Status == "REJECTED"
 		if err = s.repo.SubmitProof(ctx, tx, in); err != nil {
+			var postgresError *pgconn.PgError
+			if errors.As(err, &postgresError) && postgresError.Code == "23505" && postgresError.ConstraintName == "contributions_transaction_reference_unique" {
+				return ErrDuplicateTransactionReference
+			}
 			return err
 		}
 		rawToken, tokenHash, err := newReviewToken()

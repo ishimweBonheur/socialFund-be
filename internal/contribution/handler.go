@@ -347,6 +347,8 @@ func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, err error) 
 		httpx.WriteError(w, httpx.NewError(409, "INVALID_PAYMENT_AMOUNT", "Payment must cover the full amount due"))
 	case errors.Is(err, ErrProofRequired):
 		httpx.WriteError(w, httpx.NewError(409, "PROOF_REQUIRED", "Payment proof is required"))
+	case errors.Is(err, ErrDuplicateTransactionReference):
+		httpx.WriteError(w, httpx.NewError(409, "DUPLICATE_TRANSACTION_REFERENCE", "This transaction reference has already been used"))
 	case errors.Is(err, ErrInvalidState):
 		httpx.WriteError(w, httpx.NewError(409, "INVALID_STATUS_TRANSITION", "Contribution cannot be processed in its current state"))
 	default:

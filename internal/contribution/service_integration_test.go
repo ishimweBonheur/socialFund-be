@@ -200,6 +200,53 @@ func TestProofSubmissionOwnershipAndResubmission(t *testing.T) {
 	assertStatus(t, f, "PENDING")
 	assertCount(t, f.pool, `SELECT count(*) FROM audit_logs WHERE entity_id=$1 AND action='CONTRIBUTION_PROOF_RESUBMITTED'`, f.contributionID, 1)
 }
+func TestProofSubmissionRejectsNormalizedDuplicateReference(t *testing.T) {
+	f := seed(t, openPool(t))
+	ctx := context.Background()
+	svc := newService(f)
+	var memberID, planID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `SELECT user_id,contribution_plan_id FROM contributions WHERE id=$1`, f.contributionID).Scan(&memberID, &planID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE contributions SET status='DUE',paid_amount=NULL,payment_date=NULL,payment_method=NULL,transaction_reference=NULL,proof_url=NULL,proof_uploaded_at=NULL WHERE id=$1`, f.contributionID); err != nil {
+		t.Fatal(err)
+	}
+	first := contribution.ProofInput{ContributionID: f.contributionID, UserID: memberID, Amount: decimal.NewFromInt(100), PaymentMethod: "BANK_TRANSFER", TransactionReference: " tx-duplicate-123 ", ProofURL: "/uploads/proofs/first.pdf"}
+	if err := svc.SubmitProof(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	var secondID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO contributions(user_id,contribution_plan_id,expected_amount,due_date,status) VALUES($1,$2,100,CURRENT_DATE+1,'DUE') RETURNING id`, memberID, planID).Scan(&secondID); err != nil {
+		t.Fatal(err)
+	}
+	second := contribution.ProofInput{ContributionID: secondID, UserID: memberID, Amount: decimal.NewFromInt(100), PaymentMethod: "BANK_TRANSFER", TransactionReference: "TX-DUPLICATE-123", ProofURL: "/uploads/proofs/second.pdf"}
+	if err := svc.SubmitProof(ctx, second); !errors.Is(err, contribution.ErrDuplicateTransactionReference) {
+		t.Fatalf("error=%v, want duplicate transaction reference", err)
+	}
+	var status string
+	var paidAmount, reference, proofURL *string
+	if err := f.pool.QueryRow(ctx, `SELECT status,paid_amount::text,transaction_reference,proof_url FROM contributions WHERE id=$1`, secondID).Scan(&status, &paidAmount, &reference, &proofURL); err != nil {
+		t.Fatal(err)
+	}
+	if status != "DUE" || paidAmount != nil || reference != nil || proofURL != nil {
+		t.Fatalf("duplicate submission was not rolled back: status=%s paid=%v reference=%v proof=%v", status, paidAmount, reference, proofURL)
+	}
+	assertCount(t, f.pool, `SELECT count(*) FROM audit_logs WHERE entity_id=$1 AND action='PROOF_UPLOADED'`, secondID, 0)
+	assertCount(t, f.pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND type='PROOF_SUBMITTED'`, secondID, 0)
+
+	second.TransactionReference = "TX-NEW-456"
+	second.ProofURL = "/uploads/proofs/retry.pdf"
+	if err := svc.SubmitProof(ctx, second); err != nil {
+		t.Fatalf("retry with a new reference failed: %v", err)
+	}
+	var retryStatus, storedReference string
+	if err := f.pool.QueryRow(ctx, `SELECT status,transaction_reference FROM contributions WHERE id=$1`, secondID).Scan(&retryStatus, &storedReference); err != nil {
+		t.Fatal(err)
+	}
+	if retryStatus != "PENDING" || storedReference != "TX-NEW-456" {
+		t.Fatalf("retry status=%s reference=%s", retryStatus, storedReference)
+	}
+}
 func rejectRecipient(t *testing.T, pool *pgxpool.Pool, email string) string {
 	t.Helper()
 	name := "test_reject_" + strings.ReplaceAll(uuid.NewString(), "-", "")

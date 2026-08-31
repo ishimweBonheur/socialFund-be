@@ -1,9 +1,11 @@
 package metrics
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -31,6 +33,18 @@ type capture struct {
 func (c *capture) WriteHeader(s int) {
 	c.status = s
 	c.ResponseWriter.WriteHeader(s)
+}
+func (c *capture) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := c.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+	}
+	return hijacker.Hijack()
+}
+func (c *capture) Flush() {
+	if flusher, ok := c.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 func (r *Registry) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

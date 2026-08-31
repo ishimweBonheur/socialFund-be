@@ -160,7 +160,22 @@ func (h *Handler) admin(w http.ResponseWriter, r *http.Request) {
 	var s AdminSummary
 	err := h.db.QueryRow(r.Context(), `SELECT COUNT(*) FILTER(WHERE role='MEMBER'),COUNT(*) FILTER(WHERE role='MEMBER' AND status='ACTIVE'),COUNT(*) FILTER(WHERE role='MEMBER' AND status='INACTIVE'),COUNT(*) FILTER(WHERE role='MEMBER' AND status='SUSPENDED') FROM users`).Scan(&s.MembersTotal, &s.MembersActive, &s.MembersInactive, &s.MembersSuspended)
 	if err == nil {
-		err = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(amount),0) FROM contribution_plans WHERE is_active AND start_date < (to_date($1,'YYYY-MM')+INTERVAL '1 month') AND (end_date IS NULL OR end_date >= to_date($1,'YYYY-MM'))`, targetMonth).Scan(&s.ExpectedMonth)
+		err = h.db.QueryRow(r.Context(), `WITH bounds AS (
+			SELECT to_date($1,'YYYY-MM')::date AS month_start,
+			       (to_date($1,'YYYY-MM')+INTERVAL '1 month'-INTERVAL '1 day')::date AS month_end
+		)
+		SELECT COALESCE(SUM(p.amount * CASE p.frequency
+			WHEN 'DAILY' THEN EXTRACT(DAY FROM b.month_end)::numeric
+			WHEN 'WEEKLY' THEN 4
+			WHEN 'MONTHLY' THEN 1
+			WHEN 'CUSTOM' THEN CEIL(EXTRACT(DAY FROM b.month_end)::numeric/GREATEST(COALESCE(p.interval_value,1),1))
+			ELSE 0
+		END),0)
+		FROM contribution_plans p
+		CROSS JOIN bounds b
+		WHERE p.is_active
+		  AND p.start_date <= b.month_end
+		  AND (p.end_date IS NULL OR p.end_date >= b.month_start)`, targetMonth).Scan(&s.ExpectedMonth)
 	}
 	if err == nil {
 		err = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(paid_amount) FILTER(WHERE status='APPROVED' AND date_trunc('month',approved_at)=date_trunc('month',to_date($1,'YYYY-MM'))),0),COALESCE(SUM(expected_amount+late_fee_amount) FILTER(WHERE status IN('OVERDUE','REJECTED')),0),COUNT(*) FILTER(WHERE status='PENDING'),COUNT(DISTINCT user_id) FILTER(WHERE status='OVERDUE') FROM contributions`, targetMonth).Scan(&s.CollectedMonth, &s.Outstanding, &s.PendingApprovals, &s.OverdueMembers)

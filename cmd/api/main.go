@@ -11,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"socialfund/internal/assistance"
 	"socialfund/internal/audit"
 	"socialfund/internal/auth"
@@ -28,6 +26,9 @@ import (
 	"socialfund/internal/notification"
 	"socialfund/internal/realtime"
 	"socialfund/internal/user"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
