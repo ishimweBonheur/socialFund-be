@@ -42,7 +42,26 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		}
 		active = &value
 	}
-	items, total, err := h.service.List(r.Context(), strings.TrimSpace(q.Get("search")), active, limit, offset)
+	parseOptionalBool := func(name string) (*bool, bool) {
+		raw := strings.TrimSpace(q.Get(name))
+		if raw == "" {
+			return nil, true
+		}
+		value, err := strconv.ParseBool(raw)
+		return &value, err == nil
+	}
+	reminder, ok := parseOptionalBool("reminder_enabled")
+	if !ok {
+		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	lateFee, ok := parseOptionalBool("late_fee_enabled")
+	if !ok {
+		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	filter := ListFilter{Search: strings.TrimSpace(q.Get("search")), Active: active, Frequency: strings.ToUpper(q.Get("frequency")), ReminderEnabled: reminder, LateFeeEnabled: lateFee, DueDay: q.Get("due_day"), AmountMin: q.Get("amount_min"), AmountMax: q.Get("amount_max"), Limit: limit, Offset: offset}
+	items, total, err := h.service.List(r.Context(), filter)
 	if err != nil {
 		httpx.WriteError(w, httpx.ErrInternal)
 		return

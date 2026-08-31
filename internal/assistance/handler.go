@@ -67,21 +67,27 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listMine(w http.ResponseWriter, r *http.Request) {
 	actor, _ := httpx.IdentityFrom(r.Context())
 	l, o := page(r)
-	items, err := h.service.ListMine(r.Context(), actor.UserID, l, o)
+	f := assistanceFilter(r, l, o)
+	items, total, err := h.service.ListMine(r.Context(), f, actor.UserID)
 	if err != nil {
 		h.internal(w, r, "list_assistance", err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o})
+	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o, "total": total})
 }
 func (h *Handler) listAdmin(w http.ResponseWriter, r *http.Request) {
 	l, o := page(r)
-	items, err := h.service.ListAdmin(r.Context(), strings.ToUpper(r.URL.Query().Get("status")), l, o)
+	f := assistanceFilter(r, l, o)
+	items, total, err := h.service.ListAdmin(r.Context(), f)
 	if err != nil {
 		h.internal(w, r, "list_admin_assistance", err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o})
+	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o, "total": total})
+}
+func assistanceFilter(r *http.Request, limit, offset int) ListFilter {
+	q := r.URL.Query()
+	return ListFilter{Status: strings.ToUpper(q.Get("status")), Search: strings.TrimSpace(q.Get("search")), DateFrom: q.Get("date_from"), DateTo: q.Get("date_to"), AmountMin: q.Get("amount_min"), AmountMax: q.Get("amount_max"), Limit: limit, Offset: offset}
 }
 func requestID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))

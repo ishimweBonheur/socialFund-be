@@ -46,11 +46,22 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (AssistanceRequest
 	})
 	return out, err
 }
-func (s *Service) ListMine(ctx context.Context, userID uuid.UUID, limit, offset int) ([]ReviewItem, error) {
-	return s.repo.List(ctx, ListFilter{UserID: &userID, Limit: limit, Offset: offset})
+func (s *Service) ListMine(ctx context.Context, f ListFilter, userID uuid.UUID) ([]ReviewItem, int, error) {
+	f.UserID = &userID
+	items, err := s.repo.List(ctx, f)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.Count(ctx, f)
+	return items, total, err
 }
-func (s *Service) ListAdmin(ctx context.Context, status string, limit, offset int) ([]ReviewItem, error) {
-	return s.repo.List(ctx, ListFilter{Status: status, Limit: limit, Offset: offset})
+func (s *Service) ListAdmin(ctx context.Context, f ListFilter) ([]ReviewItem, int, error) {
+	items, err := s.repo.List(ctx, f)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.Count(ctx, f)
+	return items, total, err
 }
 func (s *Service) Approve(ctx context.Context, in ApprovalInput) error {
 	if !in.AmountApproved.IsPositive() {

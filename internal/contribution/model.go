@@ -33,6 +33,11 @@ type Contribution struct {
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }
+type AdminListFilter struct {
+	Search, Status, DueFrom, DueTo, Method, Proof, PaymentState string
+	LateFee, Reference, PaidFrom, PaidTo, AmountMin, AmountMax  string
+	Limit, Offset                                               int
+}
 
 func (c Contribution) TotalDue() decimal.Decimal {
 	return c.ExpectedAmount.Add(c.LateFeeAmount)

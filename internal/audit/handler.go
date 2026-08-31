@@ -40,12 +40,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, httpx.ErrValidation)
 		return
 	}
-	items, err := h.repo.List(r.Context(), Filter{UserID: uid, Action: strings.ToUpper(q.Get("action")), EntityType: strings.ToUpper(q.Get("entity_type")), EntityID: entity, DateFrom: q.Get("date_from"), DateTo: q.Get("date_to"), Limit: l, Offset: o})
+	filter := Filter{UserID: uid, Action: strings.ToUpper(q.Get("action")), EntityType: strings.ToUpper(q.Get("entity_type")), EntityID: entity, DateFrom: q.Get("date_from"), DateTo: q.Get("date_to"), Limit: l, Offset: o}
+	items, err := h.repo.List(r.Context(), filter)
 	if err != nil {
 		httpx.WriteInternal(w, r, h.logger, "audit_logs", err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o})
+	total, err := h.repo.Count(r.Context(), filter)
+	if err != nil {
+		httpx.WriteInternal(w, r, h.logger, "audit_logs_count", err)
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o, "total": total})
 }
 func parseOptional(raw string) (*uuid.UUID, bool) {
 	if raw == "" {

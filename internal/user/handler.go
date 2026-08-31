@@ -38,12 +38,18 @@ func (h *Handler) AdminRoutes() chi.Router {
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	l, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	o, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	items, err := h.service.List(r.Context(), ListFilter{Status: strings.ToUpper(r.URL.Query().Get("status")), Role: strings.ToUpper(r.URL.Query().Get("role")), Search: r.URL.Query().Get("search"), Limit: l, Offset: o})
+	filter := ListFilter{Status: strings.ToUpper(r.URL.Query().Get("status")), Role: strings.ToUpper(r.URL.Query().Get("role")), Search: r.URL.Query().Get("search"), DateFrom: r.URL.Query().Get("date_from"), DateTo: r.URL.Query().Get("date_to"), Limit: l, Offset: o}
+	items, err := h.service.List(r.Context(), filter)
 	if err != nil {
 		httpx.WriteInternal(w, r, h.logger, "list_users", err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o})
+	total, err := h.service.Count(r.Context(), filter)
+	if err != nil {
+		httpx.WriteInternal(w, r, h.logger, "count_users", err)
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"data": items, "limit": l, "offset": o, "total": total})
 }
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))

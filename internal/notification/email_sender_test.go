@@ -34,6 +34,11 @@ func TestAccountCreatedTemplateContainsMemberDataAndLoginButton(t *testing.T) {
 			t.Errorf("HTML body missing %q", value)
 		}
 	}
+	for _, color := range []string{"#213448", "#547792", "#94B4C1", "#EAE0CF"} {
+		if !strings.Contains(htmlBody, color) {
+			t.Errorf("HTML body missing system palette color %s", color)
+		}
+	}
 	if !strings.Contains(plainBody, data.Email) || !strings.Contains(plainBody, data.LoginURL) {
 		t.Fatal("plain body is missing registered email or login URL")
 	}
@@ -120,7 +125,7 @@ func TestNotificationTemplateUsesBrandAndStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"#0f9d58", "SUCCESS", subject, message} {
+	for _, value := range []string{"#213448", "SUCCESS", subject, message} {
 		if !strings.Contains(htmlBody, value) {
 			t.Errorf("HTML body missing %q", value)
 		}

@@ -55,6 +55,9 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]User, error) {
 	}
 	return s.repo.List(ctx, f)
 }
+func (s *Service) Count(ctx context.Context, f ListFilter) (int, error) {
+	return s.repo.Count(ctx, f)
+}
 func (s *Service) Update(ctx context.Context, adminID, id uuid.UUID, in UpdateInput) (User, error) {
 	var out User
 	err := database.WithTx(ctx, s.pool, func(tx pgx.Tx) error {

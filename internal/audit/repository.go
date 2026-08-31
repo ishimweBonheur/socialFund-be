@@ -19,7 +19,15 @@ type Filter struct {
 }
 type Reader interface {
 	List(context.Context, Filter) ([]AuditLog, error)
+	Count(context.Context, Filter) (int, error)
 }
+
+func (r *PostgresRepository) Count(ctx context.Context, f Filter) (int, error) {
+	var total int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE ($1::uuid IS NULL OR user_id=$1) AND ($2='' OR action=$2) AND ($3='' OR entity_type=$3) AND ($4::uuid IS NULL OR entity_id=$4) AND ($5::date IS NULL OR created_at >= $5::date) AND ($6::date IS NULL OR created_at < $6::date+1)`, f.UserID, f.Action, f.EntityType, f.EntityID, nullable(f.DateFrom), nullable(f.DateTo)).Scan(&total)
+	return total, err
+}
+
 type PostgresRepository struct{ db *pgxpool.Pool }
 
 func NewRepository(databases ...*pgxpool.Pool) *PostgresRepository {
@@ -30,6 +38,7 @@ func NewRepository(databases ...*pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 func (r *PostgresRepository) Create(ctx context.Context, db database.DBTX, a AuditLog) (AuditLog, error) {
+	a = enrichFromContext(ctx, a)
 	err := db.QueryRow(ctx, `INSERT INTO audit_logs(user_id,action,entity_type,entity_id,old_data,new_data,ip_address,user_agent) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,created_at`, a.UserID, a.Action, a.EntityType, a.EntityID, a.OldData, a.NewData, a.IPAddress, a.UserAgent).Scan(&a.ID, &a.CreatedAt)
 	return a, err
 }

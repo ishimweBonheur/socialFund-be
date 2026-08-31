@@ -32,3 +32,15 @@ type ListItem struct {
 	MemberName  string `json:"member_name"`
 	MemberEmail string `json:"member_email"`
 }
+type ListFilter struct {
+	Search          string
+	Active          *bool
+	Frequency       string
+	ReminderEnabled *bool
+	LateFeeEnabled  *bool
+	DueDay          string
+	AmountMin       string
+	AmountMax       string
+	Limit           int
+	Offset          int
+}

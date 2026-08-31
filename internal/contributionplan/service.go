@@ -30,8 +30,8 @@ func NewService(repo Repository, extras ...any) *Service {
 func (s *Service) GetActive(ctx context.Context, userID uuid.UUID) (ContributionPlan, error) {
 	return s.repo.GetActiveByUserID(ctx, userID)
 }
-func (s *Service) List(ctx context.Context, search string, active *bool, limit, offset int) ([]ListItem, int, error) {
-	return s.repo.List(ctx, search, active, limit, offset)
+func (s *Service) List(ctx context.Context, filter ListFilter) ([]ListItem, int, error) {
+	return s.repo.List(ctx, filter)
 }
 func (s *Service) Update(ctx context.Context, adminID, id uuid.UUID, p ContributionPlan) (ContributionPlan, error) {
 	if s.pool == nil {

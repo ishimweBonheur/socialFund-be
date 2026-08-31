@@ -19,20 +19,22 @@ type Repository interface {
 	SubmitProof(context.Context, database.DBTX, ProofInput) error
 	SetReviewToken(context.Context, database.DBTX, uuid.UUID, string, time.Time) error
 	ListPending(context.Context, int, int) ([]ReviewItem, error)
-	ListAdmin(context.Context, string, string, int, int) ([]ReviewItem, int, error)
+	ListAdmin(context.Context, AdminListFilter) ([]ReviewItem, int, error)
 	Outstanding(context.Context, uuid.UUID) (Outstanding, error)
 	AdvanceLifecycle(context.Context, database.DBTX) (int64, error)
 	ListReminderCandidates(context.Context, database.DBTX, int) ([]Contribution, error)
 	ReviewData(context.Context, uuid.UUID) (Contribution, string, error)
 }
 
-func (r *PostgresRepository) ListAdmin(ctx context.Context, search, status string, limit, offset int) ([]ReviewItem, int, error) {
-	where := `WHERE ($1='' OR u.full_name ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%' OR COALESCE(c.transaction_reference,'') ILIKE '%'||$1||'%') AND ($2='' OR c.status=$2)`
+func (r *PostgresRepository) ListAdmin(ctx context.Context, f AdminListFilter) ([]ReviewItem, int, error) {
+	where := `WHERE ($1='' OR u.full_name ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%' OR COALESCE(c.transaction_reference,'') ILIKE '%'||$1||'%') AND ($2='' OR c.status=$2) AND ($3::date IS NULL OR c.due_date >= $3::date) AND ($4::date IS NULL OR c.due_date <= $4::date) AND ($5='' OR c.payment_method=$5) AND ($6='' OR ($6='WITH' AND c.proof_uploaded_at IS NOT NULL) OR ($6='WITHOUT' AND c.proof_uploaded_at IS NULL)) AND ($7='' OR ($7='UNPAID' AND COALESCE(c.paid_amount,0)=0) OR ($7='PARTIAL' AND COALESCE(c.paid_amount,0)>0 AND COALESCE(c.paid_amount,0)<c.expected_amount+c.late_fee_amount) OR ($7='PAID' AND COALESCE(c.paid_amount,0)>=c.expected_amount+c.late_fee_amount)) AND ($8='' OR ($8='WITH' AND c.late_fee_amount>0) OR ($8='WITHOUT' AND c.late_fee_amount=0)) AND ($9='' OR ($9='WITH' AND c.transaction_reference IS NOT NULL) OR ($9='WITHOUT' AND c.transaction_reference IS NULL)) AND ($10::date IS NULL OR c.payment_date >= $10::date) AND ($11::date IS NULL OR c.payment_date < $11::date+1) AND ($12::numeric IS NULL OR c.expected_amount+c.late_fee_amount >= $12::numeric) AND ($13::numeric IS NULL OR c.expected_amount+c.late_fee_amount <= $13::numeric)`
+	args := []any{f.Search, f.Status, nullableContribution(f.DueFrom), nullableContribution(f.DueTo), f.Method, f.Proof, f.PaymentState, f.LateFee, f.Reference, nullableContribution(f.PaidFrom), nullableContribution(f.PaidTo), nullableContribution(f.AmountMin), nullableContribution(f.AmountMax)}
 	var total int
-	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM contributions c JOIN users u ON u.id=c.user_id `+where, search, status).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM contributions c JOIN users u ON u.id=c.user_id `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+columns+`,u.full_name,u.email FROM contributions c JOIN users u ON u.id=c.user_id `+where+` ORDER BY c.created_at DESC LIMIT $3 OFFSET $4`, search, status, limit, offset)
+	args = append(args, f.Limit, f.Offset)
+	rows, err := r.db.Query(ctx, `SELECT `+columns+`,u.full_name,u.email FROM contributions c JOIN users u ON u.id=c.user_id `+where+` ORDER BY c.created_at DESC LIMIT $14 OFFSET $15`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -49,6 +51,12 @@ func (r *PostgresRepository) ListAdmin(ctx context.Context, search, status strin
 		items = append(items, item)
 	}
 	return items, total, rows.Err()
+}
+func nullableContribution(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func (r *PostgresRepository) ReviewData(ctx context.Context, id uuid.UUID) (Contribution, string, error) {

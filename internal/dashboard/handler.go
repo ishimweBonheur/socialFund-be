@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"socialfund/internal/httpx"
 	"strconv"
+	"time"
 )
 
 type Handler struct {
@@ -55,8 +56,8 @@ type MemberSummary struct {
 
 type MonthlyAmount struct {
 	Month     string          `json:"month"`
-	Expected  decimal.Decimal `json:"expected,omitempty"`
-	Collected decimal.Decimal `json:"collected,omitempty"`
+	Expected  decimal.Decimal `json:"expected"`
+	Collected decimal.Decimal `json:"collected"`
 	Paid      decimal.Decimal `json:"paid,omitempty"`
 	Inflow    decimal.Decimal `json:"inflow,omitempty"`
 	Outflow   decimal.Decimal `json:"outflow,omitempty"`
@@ -98,7 +99,7 @@ func (h *Handler) member(w http.ResponseWriter, r *http.Request) {
 	_ = h.db.QueryRow(r.Context(), `SELECT p.grace_period_days,(c.due_date+p.grace_period_days)::text FROM contributions c JOIN contribution_plans p ON p.id=c.contribution_plan_id WHERE c.user_id=$1 AND c.status IN('UPCOMING','DUE') ORDER BY c.due_date LIMIT 1`, actor.UserID).Scan(&s.GracePeriodDays, &s.EffectiveOverdueAt)
 	months := dashboardMonths(r)
 	history := make([]MonthlyAmount, 0)
-	rows, queryErr := h.db.Query(r.Context(), `WITH months AS (SELECT generate_series(date_trunc('month',CURRENT_DATE)-($2-1)*INTERVAL '1 month',date_trunc('month',CURRENT_DATE),INTERVAL '1 month') month) SELECT to_char(m.month,'Mon YYYY'),COALESCE(SUM(c.expected_amount),0),COALESCE(SUM(c.paid_amount) FILTER(WHERE c.status='APPROVED'),0) FROM months m LEFT JOIN contributions c ON c.user_id=$1 AND date_trunc('month',c.due_date)=m.month GROUP BY m.month ORDER BY m.month`, actor.UserID, months)
+	rows, queryErr := h.db.Query(r.Context(), `WITH months(period_start) AS (SELECT generate_series(date_trunc('month',CURRENT_DATE)-($2-1)*INTERVAL '1 month',date_trunc('month',CURRENT_DATE),INTERVAL '1 month')) SELECT to_char(m.period_start,'Mon YYYY'),COALESCE(SUM(c.expected_amount),0),COALESCE(SUM(c.paid_amount) FILTER(WHERE c.status='APPROVED'),0) FROM months m LEFT JOIN contributions c ON c.user_id=$1 AND date_trunc('month',c.due_date)=m.period_start GROUP BY m.period_start ORDER BY m.period_start`, actor.UserID, months)
 	if queryErr == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -148,10 +149,21 @@ type AdminSummary struct {
 }
 
 func (h *Handler) admin(w http.ResponseWriter, r *http.Request) {
+	targetMonth := time.Now().UTC().Format("2006-01")
+	if raw := r.URL.Query().Get("target_month"); raw != "" {
+		if _, err := time.Parse("2006-01", raw); err != nil {
+			httpx.WriteError(w, httpx.ErrValidation)
+			return
+		}
+		targetMonth = raw
+	}
 	var s AdminSummary
 	err := h.db.QueryRow(r.Context(), `SELECT COUNT(*) FILTER(WHERE role='MEMBER'),COUNT(*) FILTER(WHERE role='MEMBER' AND status='ACTIVE'),COUNT(*) FILTER(WHERE role='MEMBER' AND status='INACTIVE'),COUNT(*) FILTER(WHERE role='MEMBER' AND status='SUSPENDED') FROM users`).Scan(&s.MembersTotal, &s.MembersActive, &s.MembersInactive, &s.MembersSuspended)
 	if err == nil {
-		err = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(expected_amount) FILTER(WHERE date_trunc('month',due_date)=date_trunc('month',CURRENT_DATE)),0),COALESCE(SUM(paid_amount) FILTER(WHERE status='APPROVED' AND date_trunc('month',approved_at)=date_trunc('month',CURRENT_DATE)),0),COALESCE(SUM(expected_amount+late_fee_amount) FILTER(WHERE status IN('OVERDUE','REJECTED')),0),COUNT(*) FILTER(WHERE status='PENDING'),COUNT(DISTINCT user_id) FILTER(WHERE status='OVERDUE') FROM contributions`).Scan(&s.ExpectedMonth, &s.CollectedMonth, &s.Outstanding, &s.PendingApprovals, &s.OverdueMembers)
+		err = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(amount),0) FROM contribution_plans WHERE is_active AND start_date < (to_date($1,'YYYY-MM')+INTERVAL '1 month') AND (end_date IS NULL OR end_date >= to_date($1,'YYYY-MM'))`, targetMonth).Scan(&s.ExpectedMonth)
+	}
+	if err == nil {
+		err = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(paid_amount) FILTER(WHERE status='APPROVED' AND date_trunc('month',approved_at)=date_trunc('month',to_date($1,'YYYY-MM'))),0),COALESCE(SUM(expected_amount+late_fee_amount) FILTER(WHERE status IN('OVERDUE','REJECTED')),0),COUNT(*) FILTER(WHERE status='PENDING'),COUNT(DISTINCT user_id) FILTER(WHERE status='OVERDUE') FROM contributions`, targetMonth).Scan(&s.CollectedMonth, &s.Outstanding, &s.PendingApprovals, &s.OverdueMembers)
 	}
 	if err == nil {
 		err = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(amount) FILTER(WHERE direction='IN'),0),COALESCE(SUM(amount) FILTER(WHERE direction='OUT'),0),COALESCE(SUM(CASE direction WHEN 'IN' THEN amount ELSE -amount END),0) FROM fund_transactions`).Scan(&s.FundIn, &s.FundOut, &s.FundBalance)
@@ -168,18 +180,45 @@ func (h *Handler) admin(w http.ResponseWriter, r *http.Request) {
 	}
 	months := dashboardMonths(r)
 	contributions := make([]MonthlyAmount, 0)
-	rows, queryErr := h.db.Query(r.Context(), `WITH months AS (SELECT generate_series(date_trunc('month',CURRENT_DATE)-($1-1)*INTERVAL '1 month',date_trunc('month',CURRENT_DATE),INTERVAL '1 month') month) SELECT to_char(m.month,'Mon YYYY'),COALESCE(SUM(c.expected_amount),0),COALESCE(SUM(c.paid_amount) FILTER(WHERE c.status='APPROVED'),0) FROM months m LEFT JOIN contributions c ON date_trunc('month',c.due_date)=m.month GROUP BY m.month ORDER BY m.month`, months)
-	if queryErr == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var point MonthlyAmount
-			if rows.Scan(&point.Month, &point.Expected, &point.Collected) == nil {
-				contributions = append(contributions, point)
-			}
+	rows, queryErr := h.db.Query(r.Context(), `WITH month_series(period_start) AS (
+		SELECT generate_series(
+			date_trunc('month',CURRENT_DATE)-($1-1)*INTERVAL '1 month',
+			date_trunc('month',CURRENT_DATE),
+			INTERVAL '1 month'
+		)
+	)
+	SELECT
+		to_char(m.period_start,'Mon YYYY'),
+		(SELECT COALESCE(SUM(p.amount),0)
+		 FROM contribution_plans p
+		 WHERE p.is_active
+		   AND p.start_date < m.period_start+INTERVAL '1 month'
+		   AND (p.end_date IS NULL OR p.end_date >= m.period_start)),
+		(SELECT COALESCE(SUM(c.paid_amount),0)
+		 FROM contributions c
+		 WHERE c.status='APPROVED'
+		   AND date_trunc('month',COALESCE(c.payment_date,c.approved_at))=m.period_start)
+	FROM month_series m
+	ORDER BY m.period_start`, months)
+	if queryErr != nil {
+		httpx.WriteInternal(w, r, h.logger, "admin_dashboard_contribution_performance", queryErr)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var point MonthlyAmount
+		if err = rows.Scan(&point.Month, &point.Expected, &point.Collected); err != nil {
+			httpx.WriteInternal(w, r, h.logger, "admin_dashboard_contribution_performance_scan", err)
+			return
 		}
+		contributions = append(contributions, point)
+	}
+	if err = rows.Err(); err != nil {
+		httpx.WriteInternal(w, r, h.logger, "admin_dashboard_contribution_performance_rows", err)
+		return
 	}
 	fundMovement := make([]MonthlyAmount, 0)
-	fundRows, fundErr := h.db.Query(r.Context(), `WITH months AS (SELECT generate_series(date_trunc('month',CURRENT_DATE)-($1-1)*INTERVAL '1 month',date_trunc('month',CURRENT_DATE),INTERVAL '1 month') month) SELECT to_char(m.month,'Mon YYYY'),COALESCE(SUM(f.amount) FILTER(WHERE f.direction='IN'),0),COALESCE(SUM(f.amount) FILTER(WHERE f.direction='OUT'),0) FROM months m LEFT JOIN fund_transactions f ON date_trunc('month',f.created_at)=m.month GROUP BY m.month ORDER BY m.month`, months)
+	fundRows, fundErr := h.db.Query(r.Context(), `WITH months(period_start) AS (SELECT generate_series(date_trunc('month',CURRENT_DATE)-($1-1)*INTERVAL '1 month',date_trunc('month',CURRENT_DATE),INTERVAL '1 month')) SELECT to_char(m.period_start,'Mon YYYY'),COALESCE(SUM(f.amount) FILTER(WHERE f.direction='IN'),0),COALESCE(SUM(f.amount) FILTER(WHERE f.direction='OUT'),0) FROM months m LEFT JOIN fund_transactions f ON date_trunc('month',f.created_at)=m.period_start GROUP BY m.period_start ORDER BY m.period_start`, months)
 	if fundErr == nil {
 		defer fundRows.Close()
 		for fundRows.Next() {
@@ -234,7 +273,7 @@ func (h *Handler) frequencySummary(r *http.Request, userID *uuid.UUID) ([]Freque
 
 func dashboardMonths(r *http.Request) int {
 	months, _ := strconv.Atoi(r.URL.Query().Get("months"))
-	if months != 12 {
+	if months != 10 {
 		return 6
 	}
 	return months

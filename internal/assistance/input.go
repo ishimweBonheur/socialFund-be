@@ -30,10 +30,15 @@ type RejectionInput struct {
 	Reason              string    `json:"reason"`
 }
 type ListFilter struct {
-	UserID *uuid.UUID
-	Status string
-	Limit  int
-	Offset int
+	UserID    *uuid.UUID
+	Status    string
+	Search    string
+	DateFrom  string
+	DateTo    string
+	AmountMin string
+	AmountMax string
+	Limit     int
+	Offset    int
 }
 type ReviewItem struct {
 	AssistanceRequest

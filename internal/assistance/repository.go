@@ -16,6 +16,7 @@ type Repository interface {
 	SetApproved(context.Context, database.DBTX, ApprovalInput) error
 	SetRejected(context.Context, database.DBTX, RejectionInput) error
 	List(context.Context, ListFilter) ([]ReviewItem, error)
+	Count(context.Context, ListFilter) (int, error)
 }
 type PostgresRepository struct{ db *pgxpool.Pool }
 
@@ -62,7 +63,7 @@ func (r *PostgresRepository) SetRejected(ctx context.Context, db database.DBTX, 
 	return err
 }
 func (r *PostgresRepository) List(ctx context.Context, f ListFilter) ([]ReviewItem, error) {
-	rows, err := r.db.Query(ctx, `SELECT a.id,a.user_id,a.amount_requested,a.reason,a.description,a.attachment_url,a.status,a.amount_approved,a.reviewed_by,a.reviewed_at,a.rejection_reason,a.amount_disbursed,a.disbursement_method,a.disbursement_reference,a.disbursed_by,a.disbursed_at,a.created_at,a.updated_at,u.full_name,u.email FROM assistance_requests a JOIN users u ON u.id=a.user_id WHERE ($1::uuid IS NULL OR a.user_id=$1) AND ($2='' OR a.status=$2) ORDER BY a.created_at DESC LIMIT $3 OFFSET $4`, f.UserID, f.Status, f.Limit, f.Offset)
+	rows, err := r.db.Query(ctx, `SELECT a.id,a.user_id,a.amount_requested,a.reason,a.description,a.attachment_url,a.status,a.amount_approved,a.reviewed_by,a.reviewed_at,a.rejection_reason,a.amount_disbursed,a.disbursement_method,a.disbursement_reference,a.disbursed_by,a.disbursed_at,a.created_at,a.updated_at,u.full_name,u.email FROM assistance_requests a JOIN users u ON u.id=a.user_id WHERE ($1::uuid IS NULL OR a.user_id=$1) AND ($2='' OR a.status=$2) AND ($3='' OR u.full_name ILIKE '%'||$3||'%' OR u.email ILIKE '%'||$3||'%' OR a.reason ILIKE '%'||$3||'%') AND ($4::date IS NULL OR a.created_at >= $4::date) AND ($5::date IS NULL OR a.created_at < $5::date+1) AND ($6::numeric IS NULL OR a.amount_requested >= $6::numeric) AND ($7::numeric IS NULL OR a.amount_requested <= $7::numeric) ORDER BY a.created_at DESC LIMIT $8 OFFSET $9`, f.UserID, f.Status, f.Search, optionalString(f.DateFrom), optionalString(f.DateTo), optionalString(f.AmountMin), optionalString(f.AmountMax), f.Limit, f.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -77,4 +78,15 @@ func (r *PostgresRepository) List(ctx context.Context, f ListFilter) ([]ReviewIt
 		items = append(items, i)
 	}
 	return items, rows.Err()
+}
+func (r *PostgresRepository) Count(ctx context.Context, f ListFilter) (int, error) {
+	var total int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM assistance_requests a JOIN users u ON u.id=a.user_id WHERE ($1::uuid IS NULL OR a.user_id=$1) AND ($2='' OR a.status=$2) AND ($3='' OR u.full_name ILIKE '%'||$3||'%' OR u.email ILIKE '%'||$3||'%' OR a.reason ILIKE '%'||$3||'%') AND ($4::date IS NULL OR a.created_at >= $4::date) AND ($5::date IS NULL OR a.created_at < $5::date+1) AND ($6::numeric IS NULL OR a.amount_requested >= $6::numeric) AND ($7::numeric IS NULL OR a.amount_requested <= $7::numeric)`, f.UserID, f.Status, f.Search, optionalString(f.DateFrom), optionalString(f.DateTo), optionalString(f.AmountMin), optionalString(f.AmountMax)).Scan(&total)
+	return total, err
+}
+func optionalString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }

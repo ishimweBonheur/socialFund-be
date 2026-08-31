@@ -20,6 +20,7 @@ type User struct {
 }
 type ListFilter struct {
 	Status, Role, Search string
+	DateFrom, DateTo     string
 	Limit, Offset        int
 }
 type UpdateInput struct {

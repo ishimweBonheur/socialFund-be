@@ -76,11 +76,50 @@ func (h *Handler) Routes(middlewares ...func(http.Handler) http.Handler) chi.Rou
 		r.Post("/{id}/proof", h.proof)
 	}
 	r.Get("/{id}/proof", h.proofURL)
+	r.Get("/{id}/proof/content", h.proofContent)
 	if len(middlewares) > 0 {
 		r.With(middlewares[0]).Post("/{id}/approve", h.approve)
 		r.With(middlewares[0]).Post("/{id}/reject", h.reject)
 	}
 	return r
+}
+func (h *Handler) proofContent(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, httpx.ErrValidation)
+		return
+	}
+	actor, _ := httpx.IdentityFrom(r.Context())
+	c, err := h.service.GetFor(r.Context(), id, actor.UserID, actor.Role == "ADMIN")
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if c.ProofURL == nil {
+		httpx.WriteError(w, httpx.NewError(404, "PROOF_REQUIRED", "Contribution has no proof"))
+		return
+	}
+	h.streamProof(w, r, *c.ProofURL)
+}
+
+func (h *Handler) streamProof(w http.ResponseWriter, r *http.Request, key string) {
+	reader, filename, err := h.storage.Open(r.Context(), key)
+	if err != nil {
+		h.logger.WarnContext(r.Context(), "open proof failed", "key", key, "error", err)
+		httpx.WriteError(w, httpx.NewError(404, "PROOF_FILE_NOT_FOUND", "The proof file is missing; please upload it again"))
+		return
+	}
+	defer reader.Close()
+	contentType := mime.TypeByExtension(filepath.Ext(filename))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if _, err = io.Copy(w, reader); err != nil {
+		h.logger.WarnContext(r.Context(), "stream proof failed", "error", err)
+	}
 }
 func (h *Handler) proofURL(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -103,6 +142,9 @@ func (h *Handler) proofURL(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, httpx.NewError(503, "STORAGE_UNAVAILABLE", "Proof storage is temporarily unavailable"))
 		return
 	}
+	if strings.HasPrefix(url, "/uploads/proofs/") {
+		url = fmt.Sprintf("/api/v1/contributions/%s/proof/content", c.ID)
+	}
 	httpx.WriteJSON(w, 200, map[string]any{"data": map[string]any{"url": url, "expires_in": 300}})
 }
 func (h *Handler) AdminRoutes() chi.Router {
@@ -114,7 +156,8 @@ func (h *Handler) AdminRoutes() chi.Router {
 func (h *Handler) listAdmin(w http.ResponseWriter, r *http.Request) {
 	l, o := pagination(r)
 	q := r.URL.Query()
-	items, total, err := h.service.ListAdmin(r.Context(), strings.TrimSpace(q.Get("search")), strings.ToUpper(strings.TrimSpace(q.Get("status"))), l, o)
+	filter := AdminListFilter{Search: strings.TrimSpace(q.Get("search")), Status: strings.ToUpper(strings.TrimSpace(q.Get("status"))), DueFrom: q.Get("due_from"), DueTo: q.Get("due_to"), Method: strings.ToUpper(q.Get("method")), Proof: strings.ToUpper(q.Get("proof")), PaymentState: strings.ToUpper(q.Get("payment_state")), LateFee: strings.ToUpper(q.Get("late_fee")), Reference: strings.ToUpper(q.Get("reference")), PaidFrom: q.Get("paid_from"), PaidTo: q.Get("paid_to"), AmountMin: q.Get("amount_min"), AmountMax: q.Get("amount_max"), Limit: l, Offset: o}
+	items, total, err := h.service.ListAdmin(r.Context(), filter)
 	if err != nil {
 		h.internal(w, r, "list_admin_contributions", err)
 		return

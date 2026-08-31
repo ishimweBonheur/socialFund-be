@@ -29,7 +29,7 @@ func BuildLoginURL(frontendURL string) string {
 	return strings.TrimRight(frontendURL, "/") + "/login"
 }
 
-var htmlTemplate = template.Must(template.New("account-created").Parse(`<!doctype html><html><body style="margin:0;background:#f5f7f8;font-family:Arial,sans-serif;color:#111827"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:28px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden"><tr><td style="padding:24px 28px;background:#0f9d58;color:#fff;font-size:22px;font-weight:bold">Social Fund</td></tr><tr><td style="padding:30px 28px"><div style="display:inline-block;padding:6px 12px;border-radius:999px;background:#ecfdf5;color:#0f9d58;font-size:12px;font-weight:bold">ACCOUNT CREATED</div><h1 style="font-size:22px;margin:18px 0 8px">Welcome, {{.FullName}}</h1><p style="color:#4b5563;line-height:1.6">Your Social Fund account has been created successfully.</p><h2 style="font-size:16px;margin-top:28px">Account details</h2><table role="presentation" width="100%" cellspacing="0" cellpadding="10" style="background:#f5f7f8;border:1px solid #e5e7eb;border-radius:10px"><tr><td><strong>Name</strong></td><td>{{.FullName}}</td></tr><tr><td><strong>Email</strong></td><td>{{.Email}}</td></tr><tr><td><strong>Phone</strong></td><td>{{.Phone}}</td></tr><tr><td><strong>Contribution amount</strong></td><td>{{.ContributionAmount}}</td></tr><tr><td><strong>Contribution frequency</strong></td><td>{{.ContributionFrequency}}</td></tr><tr><td><strong>Payment due</strong></td><td>{{.PaymentDue}}</td></tr></table><p style="margin-top:24px"><strong>Your account is currently inactive.</strong></p><p style="color:#4b5563;line-height:1.6">Sign in with your registered Google account ({{.Email}}) to verify and activate it.</p><p style="margin:28px 0"><a href="{{.LoginURL}}" style="display:inline-block;background:#0f9d58;color:#fff;text-decoration:none;padding:13px 22px;border-radius:999px;font-weight:bold">Login to Social Fund</a></p></td></tr><tr><td style="padding:18px 28px;background:#f5f7f8;color:#6b7280;font-size:12px">This is an automated message from Social Fund.</td></tr></table></td></tr></table></body></html>`))
+var htmlTemplate = template.Must(template.New("account-created").Parse(`<!doctype html><html><body style="margin:0;background:#EAE0CF;font-family:Arial,sans-serif;color:#213448"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:32px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#EAE0CF;border-radius:12px;overflow:hidden;box-shadow:0 18px 48px #94B4C1"><tr><td style="padding:24px 30px;background:#213448;color:#EAE0CF;font-size:22px;font-weight:bold">Social Fund<br><span style="font-size:11px;font-weight:normal;color:#94B4C1">Community finance</span></td></tr><tr><td style="padding:32px 30px"><div style="display:inline-block;padding:6px 10px;border-radius:6px;background:#94B4C1;color:#213448;font-size:11px;font-weight:bold;letter-spacing:1px">ACCOUNT CREATED</div><h1 style="font-size:24px;margin:20px 0 8px">Welcome, {{.FullName}}</h1><p style="color:#547792;line-height:1.6;margin-top:0">Your Social Fund account has been created successfully.</p><h2 style="font-size:15px;margin-top:28px">Account details</h2><table role="presentation" width="100%" cellspacing="0" cellpadding="11" style="background:#94B4C1;border-radius:9px;box-shadow:0 8px 24px #94B4C1"><tr><td><strong>Name</strong></td><td>{{.FullName}}</td></tr><tr><td><strong>Email</strong></td><td>{{.Email}}</td></tr><tr><td><strong>Phone</strong></td><td>{{.Phone}}</td></tr><tr><td><strong>Contribution amount</strong></td><td>{{.ContributionAmount}}</td></tr><tr><td><strong>Contribution frequency</strong></td><td>{{.ContributionFrequency}}</td></tr><tr><td><strong>Payment due</strong></td><td>{{.PaymentDue}}</td></tr></table><p style="margin-top:26px"><strong>Your account is currently inactive.</strong></p><p style="color:#547792;line-height:1.6">Sign in with your registered Google account ({{.Email}}) to verify and activate it.</p><p style="margin:28px 0 8px"><a href="{{.LoginURL}}" style="display:inline-block;background:#547792;color:#EAE0CF;text-decoration:none;padding:13px 22px;border-radius:8px;font-weight:bold;box-shadow:0 8px 18px #94B4C1">Login to Social Fund</a></p></td></tr><tr><td style="padding:18px 30px;background:#94B4C1;color:#213448;font-size:12px">This is an automated message from Social Fund.</td></tr></table></td></tr></table></body></html>`))
 
 type notificationEmailData struct {
 	Subject, Label, Accent, Tint    string
@@ -38,20 +38,20 @@ type notificationEmailData struct {
 }
 
 var urlPattern = regexp.MustCompile(`https?://[^\s<]+`)
-var notificationHTMLTemplate = template.Must(template.New("notification").Parse(`<!doctype html><html><body style="margin:0;background:#f5f7f8;font-family:Arial,sans-serif;color:#111827"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:28px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden"><tr><td style="padding:24px 28px;background:#0f9d58;color:#fff;font-size:22px;font-weight:bold">Social Fund</td></tr><tr><td style="padding:30px 28px"><div style="display:inline-block;padding:6px 12px;border-radius:999px;background:{{.Tint}};color:{{.Accent}};font-size:12px;font-weight:bold">{{.Label}}</div><h1 style="font-size:22px;line-height:1.3;margin:18px 0">{{.Subject}}</h1><div style="border-left:4px solid {{.Accent}};background:#f9fafb;border-radius:8px;padding:18px;color:#374151;font-size:15px;line-height:1.7">{{.Body}}</div>{{if .ProofURL}}<p style="margin:24px 0 10px"><a href="{{.ProofURL}}" style="display:inline-block;background:#374151;color:#fff;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:bold">View Proof</a></p>{{end}}{{if .ApproveURL}}<table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:12px"><tr><td style="padding-right:10px"><a href="{{.ApproveURL}}" style="display:inline-block;background:#0f9d58;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:bold">Approve</a></td><td><a href="{{.RejectURL}}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:bold">Reject</a></td></tr></table>{{end}}{{if .ProofURL}}<p style="margin-top:18px;color:#6b7280;font-size:13px">The original payment proof is also attached to this email.</p>{{end}}</td></tr><tr><td style="padding:18px 28px;background:#f5f7f8;color:#6b7280;font-size:12px">This is an automated message from Social Fund. Please keep transaction references for your records.</td></tr></table></td></tr></table></body></html>`))
+var notificationHTMLTemplate = template.Must(template.New("notification").Parse(`<!doctype html><html><body style="margin:0;background:#EAE0CF;font-family:Arial,sans-serif;color:#213448"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:32px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#EAE0CF;border-radius:12px;overflow:hidden;box-shadow:0 18px 48px #94B4C1"><tr><td style="padding:24px 30px;background:#213448;color:#EAE0CF;font-size:22px;font-weight:bold">Social Fund<br><span style="font-size:11px;font-weight:normal;color:#94B4C1">Community finance</span></td></tr><tr><td style="padding:32px 30px"><div style="display:inline-block;padding:6px 10px;border-radius:6px;background:{{.Tint}};color:{{.Accent}};font-size:11px;font-weight:bold;letter-spacing:1px">{{.Label}}</div><h1 style="font-size:24px;line-height:1.3;margin:20px 0">{{.Subject}}</h1><div style="background:#94B4C1;border-radius:9px;padding:20px;color:#213448;font-size:15px;line-height:1.7;box-shadow:0 8px 24px #94B4C1">{{.Body}}</div>{{if .ProofURL}}<p style="margin:24px 0 10px"><a href="{{.ProofURL}}" style="display:inline-block;background:#547792;color:#EAE0CF;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:bold;box-shadow:0 8px 18px #94B4C1">View Proof</a></p>{{end}}{{if .ApproveURL}}<table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:14px"><tr><td style="padding-right:10px"><a href="{{.ApproveURL}}" style="display:inline-block;background:#547792;color:#EAE0CF;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">Approve</a></td><td><a href="{{.RejectURL}}" style="display:inline-block;background:#213448;color:#EAE0CF;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">Reject</a></td></tr></table>{{end}}{{if .ProofURL}}<p style="margin-top:18px;color:#547792;font-size:13px">The original payment proof is also attached to this email.</p>{{end}}</td></tr><tr><td style="padding:18px 30px;background:#94B4C1;color:#213448;font-size:12px">This is an automated message from Social Fund. Please keep transaction references for your records.</td></tr></table></td></tr></table></body></html>`))
 
 func notificationAppearance(kind string) (string, string, string) {
 	switch kind {
 	case "CONTRIBUTION_APPROVED", "ASSISTANCE_APPROVED", "ASSISTANCE_PAID":
-		return "SUCCESS", "#0f9d58", "#ecfdf5"
+		return "SUCCESS", "#213448", "#94B4C1"
 	case "CONTRIBUTION_REJECTED", "ASSISTANCE_REJECTED":
-		return "ACTION REQUIRED", "#dc2626", "#fef2f2"
+		return "ACTION REQUIRED", "#213448", "#94B4C1"
 	case "CONTRIBUTION_OVERDUE":
-		return "PAYMENT OVERDUE", "#d97706", "#fffbeb"
+		return "PAYMENT OVERDUE", "#547792", "#94B4C1"
 	case "PROOF_SUBMITTED":
-		return "REVIEW REQUIRED", "#0f9d58", "#ecfdf5"
+		return "REVIEW REQUIRED", "#547792", "#94B4C1"
 	default:
-		return "NOTIFICATION", "#0f9d58", "#ecfdf5"
+		return "NOTIFICATION", "#547792", "#94B4C1"
 	}
 }
 
@@ -62,7 +62,7 @@ func renderNotification(n Notification) (string, string, error) {
 	label, accent, tint := notificationAppearance(n.Type)
 	escaped := html.EscapeString(*n.Message)
 	escaped = urlPattern.ReplaceAllStringFunc(escaped, func(value string) string {
-		return `<a href="` + value + `" style="color:#0f9d58;font-weight:bold;word-break:break-all">` + value + `</a>`
+		return `<a href="` + value + `" style="color:#547792;font-weight:bold;word-break:break-all">` + value + `</a>`
 	})
 	escaped = strings.ReplaceAll(escaped, "\n", "<br>")
 	data := notificationEmailData{Subject: *n.Subject, Label: label, Accent: accent, Tint: tint, Body: template.HTML(escaped)} // #nosec G203 -- content is escaped before URLs and line breaks are added.
@@ -76,7 +76,7 @@ func renderNotification(n Notification) (string, string, error) {
 		data.RejectURL = *n.RejectURL
 	}
 	var body bytes.Buffer
-	if err := notificationHTMLTemplate.Execute(&body, data); err != nil {
+	if err := styledNotificationHTMLTemplate.Execute(&body, data); err != nil {
 		return "", "", fmt.Errorf("render notification email: %w", err)
 	}
 	return body.String(), *n.Message, nil
@@ -98,14 +98,14 @@ Your account is currently inactive.
 Login using Google with:
 {{.Email}}
 
-Login:
+Login to Social Fund:
 {{.LoginURL}}
 
 Your account will become active after your registered Google account is successfully verified.`))
 
 func renderAccountCreated(data AccountCreatedEmailData) (string, string, error) {
 	var htmlBody, plainBody bytes.Buffer
-	if err := htmlTemplate.Execute(&htmlBody, data); err != nil {
+	if err := styledAccountHTMLTemplate.Execute(&htmlBody, data); err != nil {
 		return "", "", fmt.Errorf("render HTML welcome email: %w", err)
 	}
 	if err := plainTemplate.Execute(&plainBody, data); err != nil {

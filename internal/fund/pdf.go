@@ -34,17 +34,19 @@ func StatementPDF(title, reference, dateFrom, dateTo string, transactions []Fund
 
 func statementPage(title, reference, dateFrom, dateTo string, page, pages int, all, rows []FundTransaction) string {
 	var b strings.Builder
+	// Warm beige canvas used by the application light theme.
+	b.WriteString("0.918 0.878 0.812 rg 0 0 842 595 re f\n")
 	// Navy header and brand title.
-	b.WriteString("0.055 0.145 0.255 rg 0 505 842 90 re f\n")
-	textAt(&b, 32, 557, 20, true, "SOCIAL FUND")
-	textAt(&b, 32, 532, 11, false, title)
-	textAt(&b, 630, 557, 9, true, reference)
-	textAt(&b, 630, 540, 8, false, "Generated "+time.Now().UTC().Format("2006-01-02 15:04 UTC"))
+	b.WriteString("0.129 0.204 0.282 rg 0 505 842 90 re f\n")
+	textAtColor(&b, 32, 557, 20, true, "SOCIAL FUND", "0.918 0.878 0.812")
+	textAtColor(&b, 32, 532, 11, false, title, "0.580 0.706 0.757")
+	textAtColor(&b, 630, 557, 9, true, reference, "0.918 0.878 0.812")
+	textAtColor(&b, 630, 540, 8, false, "Generated "+time.Now().UTC().Format("2006-01-02 15:04 UTC"), "0.580 0.706 0.757")
 	period := "All dates"
 	if dateFrom != "" || dateTo != "" {
 		period = valueOr(dateFrom, "Beginning") + " to " + valueOr(dateTo, "Today")
 	}
-	textAt(&b, 630, 524, 8, false, "Period: "+period)
+	textAtColor(&b, 630, 524, 8, false, "Period: "+period, "0.580 0.706 0.757")
 
 	var totalIn, totalOut decimal.Decimal
 	for _, item := range all {
@@ -59,19 +61,19 @@ func statementPage(title, reference, dateFrom, dateTo string, page, pages int, a
 		label, value string
 	}{{32, "TOTAL IN", "RWF " + totalIn.StringFixed(2)}, {220, "TOTAL OUT", "RWF " + totalOut.StringFixed(2)}, {408, "NET BALANCE", "RWF " + totalIn.Sub(totalOut).StringFixed(2)}, {596, "TRANSACTIONS", fmt.Sprint(len(all))}}
 	for _, card := range cards {
-		b.WriteString(fmt.Sprintf("0.95 0.97 0.98 rg %.0f 450 170 42 re f\n", card.x))
-		textAt(&b, card.x+12, 476, 7, true, card.label)
-		textAt(&b, card.x+12, 459, 12, true, card.value)
+		b.WriteString(fmt.Sprintf("0.580 0.706 0.757 rg %.0f 450 170 42 re f\n", card.x))
+		textAtColor(&b, card.x+14, 476, 7, true, card.label, "0.329 0.467 0.573")
+		textAtColor(&b, card.x+14, 459, 12, true, card.value, "0.129 0.204 0.282")
 	}
 
-	// Table heading.
-	b.WriteString("0.12 0.38 0.55 rg 32 414 778 24 re f\n")
+	// Borderless table: hierarchy comes from the heading and alternating row fills.
+	b.WriteString("0.329 0.467 0.573 rg 32 414 778 24 re f\n")
 	headings := []struct {
 		x    float64
 		text string
 	}{{40, "DATE"}, {130, "MEMBER"}, {285, "TYPE"}, {370, "FLOW"}, {415, "AMOUNT"}, {505, "METHOD"}, {610, "REFERENCE"}, {750, "STATUS"}}
 	for _, heading := range headings {
-		textAtColor(&b, heading.x, 423, 7, true, heading.text, "1 1 1")
+		textAtColor(&b, heading.x, 423, 7, true, heading.text, "0.918 0.878 0.812")
 	}
 	if len(rows) == 0 {
 		textAt(&b, 40, 385, 10, false, "No completed transactions found for this period.")
@@ -79,7 +81,7 @@ func statementPage(title, reference, dateFrom, dateTo string, page, pages int, a
 	for index, item := range rows {
 		y := 394 - float64(index*14)
 		if index%2 == 0 {
-			b.WriteString(fmt.Sprintf("0.965 0.975 0.985 rg 32 %.0f 778 14 re f\n", y-4))
+			b.WriteString(fmt.Sprintf("0.580 0.706 0.757 rg 32 %.0f 778 14 re f\n", y-4))
 		}
 		values := []struct {
 			x     float64
@@ -90,14 +92,13 @@ func statementPage(title, reference, dateFrom, dateTo string, page, pages int, a
 			textAt(&b, value.x, y, 7, false, truncate(value.text, value.width))
 		}
 	}
-	b.WriteString("0.82 0.86 0.89 RG 32 42 m 810 42 l S\n")
 	textAt(&b, 32, 25, 7, false, "Keep this statement as transaction evidence. Verify references with the Social Fund administrator.")
 	textAt(&b, 760, 25, 7, true, fmt.Sprintf("Page %d of %d", page, pages))
 	return b.String()
 }
 
 func textAt(b *strings.Builder, x, y float64, size int, bold bool, value string) {
-	textAtColor(b, x, y, size, bold, value, "0.10 0.14 0.18")
+	textAtColor(b, x, y, size, bold, value, "0.129 0.204 0.282")
 }
 func textAtColor(b *strings.Builder, x, y float64, size int, bold bool, value, color string) {
 	font := "F1"

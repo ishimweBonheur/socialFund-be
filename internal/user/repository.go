@@ -17,13 +17,20 @@ type Repository interface {
 	Activate(context.Context, database.DBTX, uuid.UUID, string) error
 	RecordLogin(context.Context, database.DBTX, uuid.UUID) error
 	List(context.Context, ListFilter) ([]User, error)
+	Count(context.Context, ListFilter) (int, error)
 	LockByID(context.Context, database.DBTX, uuid.UUID) (User, error)
 	Update(context.Context, database.DBTX, uuid.UUID, UpdateInput) error
 	SetStatus(context.Context, database.DBTX, uuid.UUID, string, string) error
 }
 
+func (r *PostgresRepository) Count(ctx context.Context, f ListFilter) (int, error) {
+	var total int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE ($1='' OR status=$1) AND ($2='' OR role=$2) AND ($3='' OR full_name ILIKE '%'||$3||'%' OR email ILIKE '%'||$3||'%' OR phone ILIKE '%'||$3||'%') AND ($4::date IS NULL OR created_at >= $4::date) AND ($5::date IS NULL OR created_at < $5::date+1)`, f.Status, f.Role, f.Search, nullableDate(f.DateFrom), nullableDate(f.DateTo)).Scan(&total)
+	return total, err
+}
+
 func (r *PostgresRepository) List(ctx context.Context, f ListFilter) ([]User, error) {
-	rows, err := r.db.Query(ctx, `SELECT id,full_name,email,phone,google_id,role,status,last_login_at,created_by,created_at,updated_at FROM users WHERE ($1='' OR status=$1) AND ($2='' OR role=$2) AND ($3='' OR full_name ILIKE '%'||$3||'%' OR email ILIKE '%'||$3||'%' OR phone ILIKE '%'||$3||'%') ORDER BY created_at DESC LIMIT $4 OFFSET $5`, f.Status, f.Role, f.Search, f.Limit, f.Offset)
+	rows, err := r.db.Query(ctx, `SELECT id,full_name,email,phone,google_id,role,status,last_login_at,created_by,created_at,updated_at FROM users WHERE ($1='' OR status=$1) AND ($2='' OR role=$2) AND ($3='' OR full_name ILIKE '%'||$3||'%' OR email ILIKE '%'||$3||'%' OR phone ILIKE '%'||$3||'%') AND ($4::date IS NULL OR created_at >= $4::date) AND ($5::date IS NULL OR created_at < $5::date+1) ORDER BY created_at DESC LIMIT $6 OFFSET $7`, f.Status, f.Role, f.Search, nullableDate(f.DateFrom), nullableDate(f.DateTo), f.Limit, f.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -37,6 +44,12 @@ func (r *PostgresRepository) List(ctx context.Context, f ListFilter) ([]User, er
 		items = append(items, u)
 	}
 	return items, rows.Err()
+}
+func nullableDate(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 func (r *PostgresRepository) LockByID(ctx context.Context, db database.DBTX, id uuid.UUID) (User, error) {
 	var u User

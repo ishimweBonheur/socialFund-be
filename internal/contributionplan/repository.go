@@ -8,7 +8,7 @@ import (
 )
 
 type Repository interface {
-	List(context.Context, string, *bool, int, int) ([]ListItem, int, error)
+	List(context.Context, ListFilter) ([]ListItem, int, error)
 	GetActiveByUserID(context.Context, uuid.UUID) (ContributionPlan, error)
 	Create(context.Context, ContributionPlan) (ContributionPlan, error)
 	CreateWithDB(context.Context, database.DBTX, ContributionPlan) (ContributionPlan, error)
@@ -16,13 +16,15 @@ type Repository interface {
 	Update(context.Context, database.DBTX, ContributionPlan) error
 }
 
-func (r *PostgresRepository) List(ctx context.Context, search string, active *bool, limit, offset int) ([]ListItem, int, error) {
-	where := `WHERE ($1='' OR u.full_name ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%') AND ($2::boolean IS NULL OR p.is_active=$2)`
+func (r *PostgresRepository) List(ctx context.Context, f ListFilter) ([]ListItem, int, error) {
+	where := `WHERE ($1='' OR u.full_name ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%') AND ($2::boolean IS NULL OR p.is_active=$2) AND ($3='' OR p.frequency=$3) AND ($4::boolean IS NULL OR p.reminder_enabled=$4) AND ($5::boolean IS NULL OR p.late_fee_enabled=$5) AND ($6::int IS NULL OR p.due_day=$6::int) AND ($7::numeric IS NULL OR p.amount >= $7::numeric) AND ($8::numeric IS NULL OR p.amount <= $8::numeric)`
+	args := []any{f.Search, f.Active, f.Frequency, f.ReminderEnabled, f.LateFeeEnabled, optionalPlan(f.DueDay), optionalPlan(f.AmountMin), optionalPlan(f.AmountMax)}
 	var total int
-	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM contribution_plans p JOIN users u ON u.id=p.user_id `+where, search, active).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM contribution_plans p JOIN users u ON u.id=p.user_id `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.Query(ctx, `SELECT p.id,p.user_id,p.amount,p.frequency,p.interval_value,p.due_day,p.start_date,p.end_date,p.reminder_enabled,p.reminder_frequency,p.reminder_interval,p.late_fee_enabled,p.late_fee_percentage,p.grace_period_days,p.is_active,p.created_by,p.created_at,p.updated_at,u.full_name,u.email FROM contribution_plans p JOIN users u ON u.id=p.user_id `+where+` ORDER BY p.created_at DESC LIMIT $3 OFFSET $4`, search, active, limit, offset)
+	args = append(args, f.Limit, f.Offset)
+	rows, err := r.db.Query(ctx, `SELECT p.id,p.user_id,p.amount,p.frequency,p.interval_value,p.due_day,p.start_date,p.end_date,p.reminder_enabled,p.reminder_frequency,p.reminder_interval,p.late_fee_enabled,p.late_fee_percentage,p.grace_period_days,p.is_active,p.created_by,p.created_at,p.updated_at,u.full_name,u.email FROM contribution_plans p JOIN users u ON u.id=p.user_id `+where+` ORDER BY p.created_at DESC LIMIT $9 OFFSET $10`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -37,6 +39,12 @@ func (r *PostgresRepository) List(ctx context.Context, search string, active *bo
 		items = append(items, item)
 	}
 	return items, total, rows.Err()
+}
+func optionalPlan(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func (r *PostgresRepository) Lock(ctx context.Context, db database.DBTX, id uuid.UUID) (ContributionPlan, error) {

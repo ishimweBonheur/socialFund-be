@@ -26,6 +26,7 @@ import (
 	"socialfund/internal/httpx"
 	appmetrics "socialfund/internal/metrics"
 	"socialfund/internal/notification"
+	"socialfund/internal/realtime"
 	"socialfund/internal/user"
 )
 
@@ -116,11 +117,12 @@ func main() {
 	}()
 
 	router := chi.NewRouter()
-	router.Use(middleware.Recoverer, httpx.CORS(cfg.FrontendURL), httpx.RequestIDMiddleware, metricsRegistry.Middleware, httpx.LoggingMiddleware(logger))
+	router.Use(middleware.Recoverer, httpx.CORS(cfg.FrontendURL), httpx.RequestIDMiddleware, audit.RequestMetadataMiddleware, metricsRegistry.Middleware, httpx.LoggingMiddleware(logger))
 	if cfg.RateLimitEnabled {
 		router.Use(generalLimiter.Middleware)
 	}
 	router.Get("/healthz", database.HealthHandler(pool))
+	router.Handle("/ws/notifications", realtime.NewNotificationHandler(tokenManager, notificationService, cfg.FrontendURL))
 	if cfg.AppEnv != "production" {
 		router.Get("/metrics", metricsRegistry.Handler)
 	} else {
