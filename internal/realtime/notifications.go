@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"socialfund/internal/auth"
 	"socialfund/internal/notification"
 )
@@ -17,16 +18,22 @@ type NotificationHandler struct {
 	tokens        *auth.TokenManager
 	notifications *notification.Service
 	frontendURL   string
+	db            *pgxpool.Pool
 }
 
-func NewNotificationHandler(tokens *auth.TokenManager, notifications *notification.Service, frontendURL string) *NotificationHandler {
-	return &NotificationHandler{tokens: tokens, notifications: notifications, frontendURL: strings.TrimRight(frontendURL, "/")}
+func NewNotificationHandler(tokens *auth.TokenManager, notifications *notification.Service, frontendURL string, db *pgxpool.Pool) *NotificationHandler {
+	return &NotificationHandler{tokens: tokens, notifications: notifications, frontendURL: strings.TrimRight(frontendURL, "/"), db: db}
 }
 
 func (h *NotificationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	identity, err := h.tokens.Verify(r.URL.Query().Get("access_token"))
 	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var status string
+	if err = h.db.QueryRow(r.Context(), `SELECT status FROM users WHERE id=$1`, identity.UserID).Scan(&status); err != nil || status != "ACTIVE" {
+		http.Error(w, "account unavailable", http.StatusForbidden)
 		return
 	}
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
@@ -64,6 +71,10 @@ func (h *NotificationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	defer ping.Stop()
 	var previous []byte
 	push := func() error {
+		if err := h.db.QueryRow(r.Context(), `SELECT status FROM users WHERE id=$1`, identity.UserID).Scan(&status); err != nil || status != "ACTIVE" {
+			_ = conn.WriteJSON(map[string]any{"type": "account_suspended", "message": "Your account has been suspended. Contact support for help getting back online."})
+			return auth.ErrAccountSuspended
+		}
 		filter := notification.Filter{Limit: 50}
 		if identity.Role != "ADMIN" {
 			filter.UserID = &identity.UserID

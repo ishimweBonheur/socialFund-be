@@ -123,7 +123,7 @@ func main() {
 		router.Use(generalLimiter.Middleware)
 	}
 	router.Get("/healthz", database.HealthHandler(pool))
-	router.Handle("/ws/notifications", realtime.NewNotificationHandler(tokenManager, notificationService, cfg.FrontendURL))
+	router.Handle("/ws/notifications", realtime.NewNotificationHandler(tokenManager, notificationService, cfg.FrontendURL, pool))
 	if cfg.AppEnv != "production" {
 		router.Get("/metrics", metricsRegistry.Handler)
 	} else {
@@ -148,7 +148,7 @@ func main() {
 		r.Post("/contributions/{id}/review-token/validate", contributionHandler.ValidateToken)
 		r.Get("/contributions/{id}/proof/review", contributionHandler.ReviewProof)
 		r.Group(func(protected chi.Router) {
-			protected.Use(auth.Authenticate(tokenManager))
+			protected.Use(auth.Authenticate(tokenManager), auth.RequireActiveAccount(pool))
 			protected.Mount("/users", user.NewHandler(userService, logger).Routes())
 			protected.Mount("/contributions", contributionHandler.Routes(auth.RequireAdmin, authLimiter.Middleware))
 			protected.Mount("/assistance-requests", assistanceHandler.Routes(auth.RequireAdmin))

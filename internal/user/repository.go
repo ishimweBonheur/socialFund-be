@@ -61,7 +61,7 @@ func (r *PostgresRepository) Update(ctx context.Context, db database.DBTX, id uu
 	return err
 }
 func (r *PostgresRepository) SetStatus(ctx context.Context, db database.DBTX, id uuid.UUID, from, to string) error {
-	tag, err := db.Exec(ctx, `UPDATE users SET status=$3,updated_at=NOW() WHERE id=$1 AND status=$2`, id, from, to)
+	tag, err := db.Exec(ctx, `UPDATE users SET status=$3,status_changed_at=NOW(),updated_at=NOW() WHERE id=$1 AND status=$2`, id, from, to)
 	if err == nil && tag.RowsAffected() != 1 {
 		return pgx.ErrNoRows
 	}
@@ -98,7 +98,7 @@ func (r *PostgresRepository) LockByEmail(ctx context.Context, db database.DBTX, 
 	return u, err
 }
 func (r *PostgresRepository) Activate(ctx context.Context, db database.DBTX, id uuid.UUID, googleID string) error {
-	_, err := db.Exec(ctx, `UPDATE users SET status='ACTIVE',google_id=$2,last_login_at=NOW(),updated_at=NOW() WHERE id=$1 AND status='INACTIVE'`, id, googleID)
+	_, err := db.Exec(ctx, `UPDATE users SET status='ACTIVE',status_changed_at=NOW(),google_id=$2,last_login_at=NOW(),updated_at=NOW() WHERE id=$1 AND status='INACTIVE'`, id, googleID)
 	return err
 }
 func (r *PostgresRepository) RecordLogin(ctx context.Context, db database.DBTX, id uuid.UUID) error {

@@ -23,8 +23,3 @@ type ListFilter struct {
 	DateFrom, DateTo     string
 	Limit, Offset        int
 }
-type UpdateInput struct {
-	FullName *string `json:"full_name"`
-	Email    *string `json:"email"`
-	Phone    *string `json:"phone"`
-}

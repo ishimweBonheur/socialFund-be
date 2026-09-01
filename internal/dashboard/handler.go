@@ -94,12 +94,12 @@ func (h *Handler) member(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = h.db.QueryRow(r.Context(), `SELECT due_date::text,expected_amount FROM contributions WHERE user_id=$1 AND status IN('UPCOMING','DUE') ORDER BY due_date LIMIT 1`, actor.UserID).Scan(&s.NextDueDate, &s.NextExpectedAmount)
 	_ = h.db.QueryRow(r.Context(), `SELECT amount,frequency,reminder_frequency,late_fee_percentage FROM contribution_plans WHERE user_id=$1 AND is_active`, actor.UserID).Scan(&s.PlanAmount, &s.PlanFrequency, &s.ReminderFrequency, &s.PlanLateFee)
-	_ = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(expected_amount) FILTER(WHERE date_trunc('month',due_date)=date_trunc('month',CURRENT_DATE)),0),COALESCE(SUM(paid_amount) FILTER(WHERE status='APPROVED' AND date_trunc('month',payment_date)=date_trunc('month',CURRENT_DATE)),0) FROM contributions WHERE user_id=$1`, actor.UserID).Scan(&s.ExpectedMonth, &s.PaidMonth)
+	_ = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(expected_amount) FILTER(WHERE status<>'FROZEN' AND date_trunc('month',due_date)=date_trunc('month',CURRENT_DATE)),0),COALESCE(SUM(paid_amount) FILTER(WHERE status='APPROVED' AND date_trunc('month',payment_date)=date_trunc('month',CURRENT_DATE)),0) FROM contributions WHERE user_id=$1`, actor.UserID).Scan(&s.ExpectedMonth, &s.PaidMonth)
 	_ = h.db.QueryRow(r.Context(), `SELECT COALESCE(SUM(amount_disbursed) FILTER(WHERE status='PAID'),0) FROM assistance_requests WHERE user_id=$1`, actor.UserID).Scan(&s.AssistanceReceived)
 	_ = h.db.QueryRow(r.Context(), `SELECT p.grace_period_days,(c.due_date+p.grace_period_days)::text FROM contributions c JOIN contribution_plans p ON p.id=c.contribution_plan_id WHERE c.user_id=$1 AND c.status IN('UPCOMING','DUE') ORDER BY c.due_date LIMIT 1`, actor.UserID).Scan(&s.GracePeriodDays, &s.EffectiveOverdueAt)
 	months := dashboardMonths(r)
 	history := make([]MonthlyAmount, 0)
-	rows, queryErr := h.db.Query(r.Context(), `WITH months(period_start) AS (SELECT generate_series(date_trunc('month',CURRENT_DATE)-($2-1)*INTERVAL '1 month',date_trunc('month',CURRENT_DATE),INTERVAL '1 month')) SELECT to_char(m.period_start,'Mon YYYY'),COALESCE(SUM(c.expected_amount),0),COALESCE(SUM(c.paid_amount) FILTER(WHERE c.status='APPROVED'),0) FROM months m LEFT JOIN contributions c ON c.user_id=$1 AND date_trunc('month',c.due_date)=m.period_start GROUP BY m.period_start ORDER BY m.period_start`, actor.UserID, months)
+	rows, queryErr := h.db.Query(r.Context(), `WITH months(period_start) AS (SELECT generate_series(date_trunc('month',CURRENT_DATE)-($2-1)*INTERVAL '1 month',date_trunc('month',CURRENT_DATE),INTERVAL '1 month')) SELECT to_char(m.period_start,'Mon YYYY'),COALESCE(SUM(c.expected_amount) FILTER(WHERE c.status<>'FROZEN'),0),COALESCE(SUM(c.paid_amount) FILTER(WHERE c.status='APPROVED'),0) FROM months m LEFT JOIN contributions c ON c.user_id=$1 AND date_trunc('month',c.due_date)=m.period_start GROUP BY m.period_start ORDER BY m.period_start`, actor.UserID, months)
 	if queryErr == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -172,6 +172,7 @@ func (h *Handler) admin(w http.ResponseWriter, r *http.Request) {
 			ELSE 0
 		END),0)
 		FROM contribution_plans p
+		JOIN users u ON u.id=p.user_id AND u.status='ACTIVE'
 		CROSS JOIN bounds b
 		WHERE p.is_active
 		  AND p.start_date <= b.month_end
@@ -205,7 +206,7 @@ func (h *Handler) admin(w http.ResponseWriter, r *http.Request) {
 	SELECT
 		to_char(m.period_start,'Mon YYYY'),
 		(SELECT COALESCE(SUM(p.amount),0)
-		 FROM contribution_plans p
+			 FROM contribution_plans p JOIN users u ON u.id=p.user_id AND u.status='ACTIVE'
 		 WHERE p.is_active
 		   AND p.start_date < m.period_start+INTERVAL '1 month'
 		   AND (p.end_date IS NULL OR p.end_date >= m.period_start)),
@@ -258,7 +259,7 @@ func (h *Handler) admin(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) frequencySummary(r *http.Request, userID *uuid.UUID) ([]FrequencySummary, error) {
 	query := `SELECT p.frequency,
-		COALESCE(SUM(c.expected_amount+c.late_fee_amount),0),
+		COALESCE(SUM(c.expected_amount+c.late_fee_amount) FILTER(WHERE c.status<>'FROZEN'),0),
 		COALESCE(SUM(c.paid_amount) FILTER(WHERE c.status='APPROVED'),0),
 		COALESCE(SUM(c.expected_amount+c.late_fee_amount) FILTER(WHERE c.status IN('OVERDUE','REJECTED')),0),
 		COUNT(*),COUNT(*) FILTER(WHERE c.status='APPROVED'),COUNT(*) FILTER(WHERE c.status='PENDING'),

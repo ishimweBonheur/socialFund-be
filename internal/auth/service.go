@@ -19,7 +19,7 @@ var (
 	ErrInvalidGoogleToken   = httpx.NewError(401, "INVALID_GOOGLE_TOKEN", "The Google credential is invalid")
 	ErrEmailNotVerified     = httpx.NewError(401, "GOOGLE_EMAIL_NOT_VERIFIED", "The Google email is not verified")
 	ErrAccountNotRegistered = httpx.NewError(403, "ACCOUNT_NOT_REGISTERED", "No Social Fund account exists for this Google account")
-	ErrAccountSuspended     = httpx.NewError(403, "ACCOUNT_SUSPENDED", "Your Social Fund account is suspended")
+	ErrAccountSuspended     = httpx.NewError(403, "ACCOUNT_SUSPENDED", "Your account has been suspended. Contact support for help getting back online.")
 	ErrAccountInactive      = httpx.NewError(403, "ACCOUNT_INACTIVE", "Your Social Fund account is inactive")
 	ErrIdentityMismatch     = httpx.NewError(403, "GOOGLE_IDENTITY_MISMATCH", "This account could not be verified")
 	ErrUnauthorized         = httpx.ErrUnauthorized

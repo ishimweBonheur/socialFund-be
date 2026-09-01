@@ -164,14 +164,15 @@ func (r *PostgresRepository) Outstanding(ctx context.Context, userID uuid.UUID) 
 func (r *PostgresRepository) AdvanceLifecycle(ctx context.Context, db database.DBTX) (int64, error) {
 	_, err := db.Exec(ctx, `
 WITH plan_dates AS (
-    SELECT p.id plan_id,p.user_id,p.amount,
+    SELECT p.id plan_id,p.user_id,p.amount,u.status_changed_at::date active_since,
            CASE p.frequency
              WHEN 'MONTHLY' THEN (month_start + (LEAST(p.due_day,EXTRACT(DAY FROM month_start + INTERVAL '1 month - 1 day')::int)-1) * INTERVAL '1 day')::date
              ELSE generated::date
            END due_date
     FROM contribution_plans p
+    JOIN users u ON u.id=p.user_id AND u.status='ACTIVE'
     CROSS JOIN LATERAL generate_series(
-      CASE WHEN p.frequency='MONTHLY' THEN date_trunc('month',p.start_date)::date ELSE p.start_date END,
+      CASE WHEN p.frequency='MONTHLY' THEN date_trunc('month',GREATEST(p.start_date,u.status_changed_at::date))::date ELSE GREATEST(p.start_date,u.status_changed_at::date) END,
       LEAST(CURRENT_DATE,COALESCE(p.end_date,CURRENT_DATE)),
       CASE p.frequency WHEN 'DAILY' THEN INTERVAL '1 day' WHEN 'WEEKLY' THEN INTERVAL '7 days' WHEN 'MONTHLY' THEN INTERVAL '1 month' ELSE make_interval(days=>p.interval_value) END
     ) generated
@@ -180,20 +181,20 @@ WITH plan_dates AS (
 )
 INSERT INTO contributions(user_id,contribution_plan_id,expected_amount,due_date,status)
 SELECT user_id,plan_id,amount,due_date,CASE WHEN due_date<=CURRENT_DATE THEN 'DUE' ELSE 'UPCOMING' END
-FROM plan_dates
+FROM plan_dates WHERE due_date>=active_since
 ON CONFLICT(contribution_plan_id,due_date) DO NOTHING`)
 	if err != nil {
 		return 0, err
 	}
-	_, err = db.Exec(ctx, `UPDATE contributions SET status='DUE',updated_at=NOW() WHERE status='UPCOMING' AND due_date<=CURRENT_DATE`)
+	_, err = db.Exec(ctx, `UPDATE contributions c SET status='DUE',updated_at=NOW() FROM users u WHERE u.id=c.user_id AND u.status='ACTIVE' AND c.status='UPCOMING' AND c.due_date<=CURRENT_DATE`)
 	if err != nil {
 		return 0, err
 	}
-	tag, err := db.Exec(ctx, `UPDATE contributions c SET status='OVERDUE',late_fee_percentage=CASE WHEN p.late_fee_enabled THEN p.late_fee_percentage END,late_fee_amount=CASE WHEN p.late_fee_enabled THEN ROUND(c.expected_amount*p.late_fee_percentage/100,2) ELSE 0 END,overdue_at=NOW(),updated_at=NOW() FROM contribution_plans p WHERE p.id=c.contribution_plan_id AND c.status='DUE' AND CURRENT_DATE>c.due_date+p.grace_period_days`)
+	tag, err := db.Exec(ctx, `UPDATE contributions c SET status='OVERDUE',late_fee_percentage=CASE WHEN p.late_fee_enabled THEN p.late_fee_percentage END,late_fee_amount=CASE WHEN p.late_fee_enabled THEN ROUND(c.expected_amount*p.late_fee_percentage/100,2) ELSE 0 END,overdue_at=NOW(),updated_at=NOW() FROM contribution_plans p JOIN users u ON u.id=p.user_id AND u.status='ACTIVE' WHERE p.id=c.contribution_plan_id AND c.status='DUE' AND CURRENT_DATE>c.due_date+p.grace_period_days`)
 	return tag.RowsAffected(), err
 }
 func (r *PostgresRepository) ListReminderCandidates(ctx context.Context, db database.DBTX, limit int) ([]Contribution, error) {
-	rows, err := db.Query(ctx, `SELECT `+columns+` FROM contributions c JOIN contribution_plans p ON p.id=c.contribution_plan_id WHERE c.status IN ('OVERDUE','REJECTED') AND p.reminder_enabled AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.contribution_id=c.id AND n.type='CONTRIBUTION_OVERDUE' AND n.created_at>=NOW()-make_interval(days=>CASE p.reminder_frequency WHEN 'WEEKLY' THEN 7 WHEN 'CUSTOM' THEN p.reminder_interval ELSE 1 END)) ORDER BY c.due_date LIMIT $1 FOR UPDATE OF c SKIP LOCKED`, limit)
+	rows, err := db.Query(ctx, `SELECT `+columns+` FROM contributions c JOIN contribution_plans p ON p.id=c.contribution_plan_id JOIN users u ON u.id=c.user_id AND u.status='ACTIVE' WHERE c.status IN ('OVERDUE','REJECTED') AND p.reminder_enabled AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.contribution_id=c.id AND n.type='CONTRIBUTION_OVERDUE' AND n.created_at>=NOW()-make_interval(days=>CASE p.reminder_frequency WHEN 'WEEKLY' THEN 7 WHEN 'CUSTOM' THEN p.reminder_interval ELSE 1 END)) ORDER BY c.due_date LIMIT $1 FOR UPDATE OF c SKIP LOCKED`, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -94,6 +94,24 @@ func (s *Service) ChangeStatus(ctx context.Context, adminID, id uuid.UUID, activ
 		if activate {
 			from, to, action = "SUSPENDED", "ACTIVE", "USER_ACTIVATED"
 		}
+		if activate {
+			_, err = tx.Exec(ctx, `UPDATE contributions c
+				SET due_date=c.due_date+GREATEST(CURRENT_DATE-u.status_changed_at::date,0),
+				    status=c.frozen_status,frozen_status=NULL,updated_at=NOW()
+				FROM users u
+				WHERE u.id=c.user_id AND u.id=$1 AND u.status='SUSPENDED'
+				  AND c.status='FROZEN' AND c.frozen_status IS NOT NULL`, id)
+			if err != nil {
+				return err
+			}
+		} else {
+			_, err = tx.Exec(ctx, `UPDATE contributions
+				SET frozen_status=status,status='FROZEN',updated_at=NOW()
+				WHERE user_id=$1 AND status IN ('UPCOMING','DUE','OVERDUE','PENDING','REJECTED')`, id)
+			if err != nil {
+				return err
+			}
+		}
 		if err = s.repo.SetStatus(ctx, tx, id, from, to); err != nil {
 			return httpx.NewError(409, "INVALID_STATUS_TRANSITION", "User cannot be changed from the current status")
 		}
