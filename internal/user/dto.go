@@ -7,8 +7,6 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// CreateMemberRequest is the HTTP payload used to create a member together
-// with their initial contribution and reminder configuration.
 type CreateMemberRequest struct {
 	FullName     string              `json:"full_name"`
 	Email        string              `json:"email"`
