@@ -100,10 +100,14 @@ func (h *Handler) readAll(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	actor, _ := httpx.IdentityFrom(r.Context())
 	q := r.URL.Query()
 	l, _ := strconv.Atoi(q.Get("limit"))
 	o, _ := strconv.Atoi(q.Get("offset"))
-	var uid *uuid.UUID
+	uid := &actor.UserID
+	if strings.EqualFold(q.Get("scope"), "all") {
+		uid = nil
+	}
 	if raw := q.Get("user_id"); raw != "" {
 		id, err := uuid.Parse(raw)
 		if err != nil {

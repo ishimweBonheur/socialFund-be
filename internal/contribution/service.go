@@ -272,6 +272,13 @@ func (s *Service) ProcessOverdue(ctx context.Context, limit int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	var adminID uuid.UUID
+	var adminEmail string
+	if len(items) > 0 {
+		if err = guard.QueryRow(ctx, `SELECT id,email FROM users WHERE role='ADMIN' AND status='ACTIVE' ORDER BY created_at LIMIT 1`).Scan(&adminID, &adminEmail); err != nil {
+			return 0, fmt.Errorf("find overdue notification administrator: %w", err)
+		}
+	}
 	for _, c := range items {
 		u, e := s.users.GetByID(ctx, c.UserID)
 		if e != nil {
@@ -280,6 +287,11 @@ func (s *Service) ProcessOverdue(ctx context.Context, limit int) (int, error) {
 		id := c.ID
 		subject, message := "Contribution overdue", fmt.Sprintf("Your contribution is overdue. Total amount due: %s. Please sign in and submit payment proof.", c.TotalDue().StringFixed(2))
 		if _, e = s.notifications.Create(ctx, guard, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_OVERDUE", Channel: "EMAIL", Recipient: u.Email, Subject: &subject, Message: &message, Status: "PENDING"}); e != nil {
+			return 0, e
+		}
+		adminSubject := fmt.Sprintf("Overdue contribution: %s", u.FullName)
+		adminMessage := fmt.Sprintf("%s has an overdue contribution. Total amount due: %s. Due date: %s. Please follow up with the member.", u.FullName, c.TotalDue().StringFixed(2), c.DueDate.Format("2006-01-02"))
+		if _, e = s.notifications.Create(ctx, guard, notification.Notification{UserID: adminID, ContributionID: &id, Type: "CONTRIBUTION_OVERDUE", Channel: "EMAIL", Recipient: adminEmail, Subject: &adminSubject, Message: &adminMessage, Status: "PENDING"}); e != nil {
 			return 0, e
 		}
 	}

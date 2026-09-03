@@ -76,9 +76,7 @@ func (h *NotificationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			return auth.ErrAccountSuspended
 		}
 		filter := notification.Filter{Limit: 50}
-		if identity.Role != "ADMIN" {
-			filter.UserID = &identity.UserID
-		}
+		filter.UserID = &identity.UserID
 		items, err := h.notifications.List(r.Context(), filter)
 		if err != nil {
 			return err
