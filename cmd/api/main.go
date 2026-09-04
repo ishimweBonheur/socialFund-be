@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"socialfund/internal/assistance"
 	"socialfund/internal/audit"
 	"socialfund/internal/auth"
 	"socialfund/internal/config"
@@ -56,14 +55,12 @@ func main() {
 	userRepo := user.NewRepository(pool)
 	planRepo := contributionplan.NewRepository(pool)
 	contributionRepo := contribution.NewRepository(pool)
-	assistanceRepo := assistance.NewRepository(pool)
 	fundRepo := fund.NewRepository(pool)
 	auditRepo := audit.NewRepository(pool)
 	notificationRepo := notification.NewRepository(pool)
 	userService := user.NewService(pool, userRepo, planRepo, notificationRepo, auditRepo, cfg.FrontendURL)
 	planService := contributionplan.NewService(planRepo, pool, auditRepo)
 	contributionService := contribution.NewService(pool, contributionRepo, fundRepo, auditRepo, notificationRepo, userRepo, cfg.FrontendURL, cfg.APIPublicURL)
-	assistanceService := assistance.NewService(pool, assistanceRepo, fundRepo, auditRepo, notificationRepo)
 	var proofStorage contribution.FileStorage
 	if cfg.StorageDriver == "s3" {
 		proofStorage, err = contribution.NewS3Storage(ctx, cfg.S3Endpoint, cfg.S3Region, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3UsePathStyle)
@@ -75,7 +72,6 @@ func main() {
 		proofStorage = contribution.NewLocalFileStorage(cfg.StorageLocalPath+"/proofs", "/uploads/proofs")
 	}
 	contributionHandler := contribution.NewHandler(contributionService, proofStorage, logger)
-	assistanceHandler := assistance.NewHandler(assistanceService, logger)
 	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTExpiration)
 	authService := auth.NewService(pool, userRepo, auditRepo, auth.NewGoogleVerifier(cfg.GoogleClientID), tokenManager, logger)
 	notificationService := notification.NewService(notificationRepo, pool, auditRepo)
@@ -151,7 +147,6 @@ func main() {
 			protected.Use(auth.Authenticate(tokenManager), auth.RequireActiveAccount(pool))
 			protected.Mount("/users", user.NewHandler(userService, logger).Routes())
 			protected.Mount("/contributions", contributionHandler.Routes(auth.RequireAdmin, authLimiter.Middleware))
-			protected.Mount("/assistance-requests", assistanceHandler.Routes(auth.RequireAdmin))
 			protected.Mount("/dashboard", dashboardHandler.MemberRoutes())
 			protected.Mount("/fund", fund.NewHandler(fundRepo, logger).MemberRoutes())
 			protected.With(authLimiter.Middleware).Mount("/notifications", notification.NewHandler(notificationService, logger).MemberRoutes())
@@ -164,7 +159,6 @@ func main() {
 			admin.Use(auth.Authenticate(tokenManager), auth.RequireAdmin)
 			admin.With(authLimiter.Middleware).Mount("/users", user.NewHandler(userService, logger).AdminRoutes())
 			admin.Mount("/contributions", contributionHandler.AdminRoutes())
-			admin.Mount("/assistance-requests", assistanceHandler.AdminRoutes())
 			admin.Mount("/fund", fund.NewHandler(fundRepo, logger).Routes())
 			admin.Mount("/audit-logs", audit.NewHandler(auditRepo, logger).Routes())
 			admin.Mount("/dashboard", dashboardHandler.AdminRoutes())

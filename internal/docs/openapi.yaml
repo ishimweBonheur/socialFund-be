@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Social Fund API
   version: "1.1"
-  description: Member contributions, assistance, fund ledger, and audit API.
+  description: Member contributions, fund ledger, and audit API.
 servers:
   - url: http://localhost:8080
 tags:
@@ -11,7 +11,6 @@ tags:
   - {name: Users, description: Administrator member management}
   - {name: Contribution Plans, description: Contribution schedule and penalty configuration}
   - {name: Contributions}
-  - {name: Assistance}
   - {name: Fund}
   - {name: Audit}
   - {name: Dashboard, description: Member and administrator summaries}
@@ -121,54 +120,6 @@ paths:
       security: [{bearerAuth: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Rejection"}}}}
       responses: {"204": {description: Rejected}, "403": {$ref: "#/components/responses/Forbidden"}, "409": {$ref: "#/components/responses/Conflict"}}
-  /api/v1/assistance-requests/:
-    post:
-      tags: [Assistance]
-      summary: Create a member assistance request
-      security: [{bearerAuth: []}]
-      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/AssistanceCreate"}}}}
-      responses: {"201": {description: Request created as PENDING}, "400": {$ref: "#/components/responses/ValidationError"}}
-    get:
-      tags: [Assistance]
-      summary: List the authenticated member's assistance requests
-      security: [{bearerAuth: []}]
-      parameters: [{$ref: "#/components/parameters/Limit"}, {$ref: "#/components/parameters/Offset"}]
-      responses: {"200": {description: Member request list}}
-  /api/v1/admin/assistance-requests/:
-    get:
-      tags: [Assistance]
-      summary: List assistance requests for admin review
-      security: [{bearerAuth: []}]
-      parameters:
-        - {name: status, in: query, schema: {type: string, enum: [PENDING, APPROVED, REJECTED, PAID, CANCELLED]}}
-        - {$ref: "#/components/parameters/Limit"}
-        - {$ref: "#/components/parameters/Offset"}
-      responses: {"200": {description: Assistance review list}, "403": {$ref: "#/components/responses/Forbidden"}}
-  /api/v1/assistance-requests/{id}/approve:
-    parameters: [{$ref: "#/components/parameters/ID"}]
-    post:
-      tags: [Assistance]
-      summary: Approve an assistance amount without moving funds
-      security: [{bearerAuth: []}]
-      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [amount_approved], properties: {amount_approved: {type: string}}}}}}
-      responses: {"204": {description: Approved}, "409": {$ref: "#/components/responses/Conflict"}}
-  /api/v1/assistance-requests/{id}/reject:
-    parameters: [{$ref: "#/components/parameters/ID"}]
-    post:
-      tags: [Assistance]
-      summary: Reject an assistance request
-      security: [{bearerAuth: []}]
-      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Rejection"}}}}
-      responses: {"204": {description: Rejected}, "409": {$ref: "#/components/responses/Conflict"}}
-  /api/v1/assistance-requests/{id}/pay:
-    parameters: [{$ref: "#/components/parameters/ID"}]
-    post:
-      tags: [Assistance]
-      summary: Record payment of an approved request
-      description: ADMIN only. Creates exactly one OUT ledger transaction.
-      security: [{bearerAuth: []}]
-      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Disbursement"}}}}
-      responses: {"204": {description: Paid}, "409": {$ref: "#/components/responses/Conflict"}}
   /api/v1/admin/fund/summary:
     get:
       tags: [Fund]
@@ -181,7 +132,7 @@ paths:
       summary: Search the financial ledger
       security: [{bearerAuth: []}]
       parameters:
-        - {name: type, in: query, schema: {type: string, enum: [CONTRIBUTION, ASSISTANCE, ADJUSTMENT, REFUND]}}
+        - {name: type, in: query, schema: {type: string, enum: [CONTRIBUTION, ADJUSTMENT, REFUND]}}
         - {name: direction, in: query, schema: {type: string, enum: [IN, OUT]}}
         - {name: date_from, in: query, schema: {type: string, format: date}}
         - {name: date_to, in: query, schema: {type: string, format: date}}
@@ -192,7 +143,7 @@ paths:
   /api/v1/fund/summary:
     get:
       tags: [Fund]
-      summary: Get the authenticated member's contribution and assistance totals
+      summary: Get the authenticated member's contribution totals
       security: [{bearerAuth: []}]
       responses: {"200": {description: Personal transaction totals}}
   /api/v1/fund/transactions:
@@ -201,7 +152,7 @@ paths:
       summary: List only the authenticated member's completed transactions
       security: [{bearerAuth: []}]
       parameters:
-        - {name: type, in: query, schema: {type: string, enum: [CONTRIBUTION, ASSISTANCE]} }
+        - {name: type, in: query, schema: {type: string, enum: [CONTRIBUTION]} }
         - {name: date_from, in: query, schema: {type: string, format: date}}
         - {name: date_to, in: query, schema: {type: string, format: date}}
       responses: {"200": {description: Personal transaction history}}
@@ -285,14 +236,6 @@ components:
       properties: {error: {type: object, properties: {code: {type: string}, message: {type: string}}}}
     GoogleLogin: {type: object, required: [credential], properties: {credential: {type: string}}}
     Rejection: {type: object, required: [reason], properties: {reason: {type: string}}}
-    AssistanceCreate:
-      type: object
-      required: [amount_requested, reason]
-      properties: {amount_requested: {type: string, example: "100000.00"}, reason: {type: string}, description: {type: string}, attachment_url: {type: string}}
-    Disbursement:
-      type: object
-      required: [amount, method, reference]
-      properties: {amount: {type: string}, method: {type: string}, reference: {type: string}}
     CreateMember:
       type: object
       required: [full_name, email, phone, contribution, reminder]

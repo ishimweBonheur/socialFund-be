@@ -6,26 +6,25 @@ import (
 )
 
 type Notification struct {
-	ID                  uuid.UUID
-	UserID              uuid.UUID
-	ContributionID      *uuid.UUID
-	AssistanceRequestID *uuid.UUID
-	Type                string
-	Channel             string
-	Recipient           string
-	Subject             *string
-	Message             *string
-	Status              string
-	Attempts            int
-	LastError           *string
-	NextRetryAt         *time.Time
-	SentAt              *time.Time
-	ReadAt              *time.Time
-	AttachmentKey       *string
-	ProofURL            *string
-	ApproveURL          *string
-	RejectURL           *string
-	CreatedAt           time.Time
+	ID             uuid.UUID
+	UserID         uuid.UUID
+	ContributionID *uuid.UUID
+	Type           string
+	Channel        string
+	Recipient      string
+	Subject        *string
+	Message        *string
+	Status         string
+	Attempts       int
+	LastError      *string
+	NextRetryAt    *time.Time
+	SentAt         *time.Time
+	ReadAt         *time.Time
+	AttachmentKey  *string
+	ProofURL       *string
+	ApproveURL     *string
+	RejectURL      *string
+	CreatedAt      time.Time
 }
 type Filter struct {
 	Status, Type, DateFrom, DateTo string

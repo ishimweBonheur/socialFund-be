@@ -43,9 +43,9 @@ var notificationHTMLTemplate = template.Must(template.New("notification").Parse(
 
 func notificationAppearance(kind string) (string, string, string) {
 	switch kind {
-	case "CONTRIBUTION_APPROVED", "ASSISTANCE_APPROVED", "ASSISTANCE_PAID":
+	case "CONTRIBUTION_APPROVED":
 		return "SUCCESS", "#213448", "#94B4C1"
-	case "CONTRIBUTION_REJECTED", "ASSISTANCE_REJECTED":
+	case "CONTRIBUTION_REJECTED":
 		return "ACTION REQUIRED", "#213448", "#94B4C1"
 	case "CONTRIBUTION_OVERDUE":
 		return "PAYMENT OVERDUE", "#547792", "#94B4C1"

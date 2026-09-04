@@ -83,8 +83,6 @@ POST /api/v1/auth/google
 
 The backend validates the Google signature, audience, issuer, and expiration using `GOOGLE_CLIENT_ID`. It uses only the verified `sub`, `email`, and `email_verified` claims. A matching inactive account is activated and bound to the Google subject inside a transaction, activation/login audits are written, and the Social Fund JWT is issued only after commit.
 
-For system testing, migrations seed `ishimwebonheur078@gmail.com` as an administrator. Sign in with that verified Google account; its first successful login activates the account.
-
 Protected requests use:
 
 ```http
@@ -160,7 +158,7 @@ docker compose --profile test stop postgres-test
 
 The test guard rejects the application database even if it is accidentally assigned to `TEST_DATABASE_URL`. Stopping the test container discards all test data.
 
-The integration suite covers successful contribution approval, rollback after a late transaction failure, concurrent double approval, assistance rollback, and duplicate disbursement.
+The integration suite covers successful contribution approval, rollback after a late transaction failure, and concurrent double approval.
 
 ## Application Structure
 
@@ -170,7 +168,6 @@ Business code is grouped by feature under `internal/`:
 user/                 users and membership
 contributionplan/     member contribution plans
 contribution/         contribution lifecycle and approval
-assistance/           assistance requests and disbursement
 notification/         durable queue and delivery worker
 fund/                 financial ledger writes
 audit/                append-only audit writes
@@ -188,10 +185,9 @@ GET  /api/v1/contribution-plans/users/{userID}/active
 POST /api/v1/contribution-plans
 POST /api/v1/contributions/{id}/approve
 POST /api/v1/contributions/{id}/reject
-POST /api/v1/assistance-requests/{id}/pay
 ```
 
-Handlers perform HTTP decoding and response mapping only. Financial coordination remains in the contribution and assistance services.
+Handlers perform HTTP decoding and response mapping only. Financial coordination remains in the contribution service.
 
 ## Index Rationale
 
@@ -200,4 +196,4 @@ Handlers perform HTTP decoding and response mapping only. Financial coordination
 - `contribution_plans_one_active_per_user_idx` enforces and locates the sole active plan.
 - Partial notification indexes keep pending and retry worker indexes small; `FOR UPDATE SKIP LOCKED` permits concurrent workers.
 - `fund_transactions_direction_created_idx` serves direction/date reporting, while the created-at index serves unrestricted date ranges.
-- Partial unique ledger indexes make contribution approval and assistance payout idempotent at the database boundary.
+- A partial unique ledger index makes contribution approval idempotent at the database boundary.
