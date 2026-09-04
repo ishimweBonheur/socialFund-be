@@ -7,24 +7,28 @@ import (
 )
 
 type ContributionPlan struct {
-	ID                uuid.UUID
-	UserID            uuid.UUID
-	Amount            decimal.Decimal
-	Frequency         string
-	IntervalValue     *int
-	DueDay            *int
-	StartDate         time.Time
-	EndDate           *time.Time
-	ReminderEnabled   bool
-	ReminderFrequency *string
-	ReminderInterval  *int
-	LateFeeEnabled    bool
-	LateFeePercentage *decimal.Decimal
-	GracePeriodDays   int
-	IsActive          bool
-	CreatedBy         uuid.UUID
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                          uuid.UUID
+	UserID                      uuid.UUID
+	Amount                      decimal.Decimal
+	Frequency                   string
+	IntervalValue               *int
+	DueDay                      *int
+	StartDate                   time.Time
+	EndDate                     *time.Time
+	ReminderEnabled             bool
+	ReminderFrequency           *string
+	ReminderInterval            *int
+	PreDueReminderEnabled       bool
+	PreDueReminderFrequency     *string
+	PreDueReminderInterval      *int
+	PreDueReminderDaysBeforeDue int
+	LateFeeEnabled              bool
+	LateFeePercentage           *decimal.Decimal
+	GracePeriodDays             int
+	IsActive                    bool
+	CreatedBy                   uuid.UUID
+	CreatedAt                   time.Time
+	UpdatedAt                   time.Time
 }
 
 type ListItem struct {

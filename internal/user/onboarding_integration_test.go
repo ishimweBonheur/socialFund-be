@@ -56,8 +56,10 @@ func serviceFor(pool *pgxpool.Pool) *user.Service {
 }
 func request(email, phone string, amount int64) user.CreateMemberRequest {
 	day := 5
-	return user.CreateMemberRequest{FullName: "Patience Ineza", Email: email, Phone: phone, Contribution: user.ContributionRequest{Amount: decimal.NewFromInt(amount), Frequency: "MONTHLY", DueDay: &day, StartDate: "2026-09-01"}, Reminder: user.ReminderRequest{Enabled: true, Frequency: "DAILY"}}
+	return user.CreateMemberRequest{FullName: "Patience Ineza", Email: email, Phone: phone, Contribution: user.ContributionRequest{Amount: decimal.NewFromInt(amount), Frequency: "MONTHLY", DueDay: &day, StartDate: "2026-09-01"}, PreDueReminder: user.ReminderRequest{Enabled: true, StartDate: "2026-09-02", Frequency: "CUSTOM", Interval: intPtr(4)}, OverdueReminder: user.ReminderRequest{Enabled: true, Frequency: "DAILY"}}
 }
+
+func intPtr(value int) *int { return &value }
 func TestCreateMemberTransaction(t *testing.T) {
 	pool := testPool(t)
 	admin := seedAdmin(t, pool)
@@ -70,6 +72,13 @@ func TestCreateMemberTransaction(t *testing.T) {
 		t.Fatalf("unexpected member: %+v", created)
 	}
 	assertCount(t, pool, `SELECT count(*) FROM contribution_plans WHERE user_id=$1`, created.ID, 1)
+	var daysBeforeDue int
+	if err := pool.QueryRow(context.Background(), `SELECT pre_due_reminder_days_before_due FROM contribution_plans WHERE user_id=$1`, created.ID).Scan(&daysBeforeDue); err != nil {
+		t.Fatal(err)
+	}
+	if daysBeforeDue != 3 {
+		t.Fatalf("reminder_days_before_due=%d, want 3", daysBeforeDue)
+	}
 	assertCount(t, pool, `SELECT count(*) FROM contributions WHERE user_id=$1`, created.ID, 1)
 	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE user_id=$1 AND type='ACCOUNT_CREATED' AND status='PENDING'`, created.ID, 1)
 	assertCount(t, pool, `SELECT count(*) FROM audit_logs WHERE entity_id=$1 AND action='USER_CREATED'`, created.ID, 1)

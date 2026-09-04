@@ -127,7 +127,7 @@ func (r *PostgresRepository) SetRejected(ctx context.Context, db database.DBTX, 
 	return err
 }
 func (r *PostgresRepository) SubmitProof(ctx context.Context, db database.DBTX, in ProofInput) error {
-	tag, err := db.Exec(ctx, `UPDATE contributions SET paid_amount=$3,payment_date=NOW(),payment_method=$4,transaction_reference=$5,proof_url=$6,proof_uploaded_at=NOW(),status='PENDING',rejection_reason=NULL,updated_at=NOW() WHERE id=$1 AND user_id=$2 AND status IN ('DUE','OVERDUE','REJECTED')`, in.ContributionID, in.UserID, in.Amount, in.PaymentMethod, in.TransactionReference, in.ProofURL)
+	tag, err := db.Exec(ctx, `UPDATE contributions SET paid_amount=$3,payment_date=NOW(),payment_method=$4,transaction_reference=$5,proof_url=$6,proof_uploaded_at=NOW(),status='PENDING',rejection_reason=NULL,updated_at=NOW() WHERE id=$1 AND user_id=$2 AND status IN ('UPCOMING','DUE','OVERDUE','REJECTED')`, in.ContributionID, in.UserID, in.Amount, in.PaymentMethod, in.TransactionReference, in.ProofURL)
 	if err == nil && tag.RowsAffected() != 1 {
 		return ErrInvalidState
 	}
@@ -173,7 +173,10 @@ WITH plan_dates AS (
     JOIN users u ON u.id=p.user_id AND u.status='ACTIVE'
     CROSS JOIN LATERAL generate_series(
       CASE WHEN p.frequency='MONTHLY' THEN date_trunc('month',GREATEST(p.start_date,u.status_changed_at::date))::date ELSE GREATEST(p.start_date,u.status_changed_at::date) END,
-      LEAST(CURRENT_DATE,COALESCE(p.end_date,CURRENT_DATE)),
+      LEAST(
+        CURRENT_DATE + CASE WHEN p.pre_due_reminder_enabled THEN p.pre_due_reminder_days_before_due ELSE 0 END,
+        COALESCE(p.end_date,CURRENT_DATE + CASE WHEN p.pre_due_reminder_enabled THEN p.pre_due_reminder_days_before_due ELSE 0 END)
+      ),
       CASE p.frequency WHEN 'DAILY' THEN INTERVAL '1 day' WHEN 'WEEKLY' THEN INTERVAL '7 days' WHEN 'MONTHLY' THEN INTERVAL '1 month' ELSE make_interval(days=>p.interval_value) END
     ) generated
     CROSS JOIN LATERAL (SELECT date_trunc('month',generated)::date month_start) m
@@ -194,7 +197,28 @@ ON CONFLICT(contribution_plan_id,due_date) DO NOTHING`)
 	return tag.RowsAffected(), err
 }
 func (r *PostgresRepository) ListReminderCandidates(ctx context.Context, db database.DBTX, limit int) ([]Contribution, error) {
-	rows, err := db.Query(ctx, `SELECT `+columns+` FROM contributions c JOIN contribution_plans p ON p.id=c.contribution_plan_id JOIN users u ON u.id=c.user_id AND u.status='ACTIVE' WHERE c.status IN ('OVERDUE','REJECTED') AND p.reminder_enabled AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.contribution_id=c.id AND n.type='CONTRIBUTION_OVERDUE' AND n.created_at>=NOW()-make_interval(days=>CASE p.reminder_frequency WHEN 'WEEKLY' THEN 7 WHEN 'CUSTOM' THEN p.reminder_interval ELSE 1 END)) ORDER BY c.due_date LIMIT $1 FOR UPDATE OF c SKIP LOCKED`, limit)
+	rows, err := db.Query(ctx, `SELECT `+columns+` FROM contributions c JOIN contribution_plans p ON p.id=c.contribution_plan_id JOIN users u ON u.id=c.user_id AND u.status='ACTIVE'
+WHERE c.status IN ('UPCOMING','DUE','OVERDUE','REJECTED')
+  AND ((c.status IN ('UPCOMING','DUE') AND p.pre_due_reminder_enabled AND CURRENT_DATE >= c.due_date-p.pre_due_reminder_days_before_due)
+    OR (c.status IN ('OVERDUE','REJECTED') AND p.reminder_enabled))
+  AND NOT EXISTS (
+    SELECT 1 FROM notifications n
+    WHERE n.contribution_id=c.id
+      AND n.type=CASE WHEN c.status IN ('OVERDUE','REJECTED') THEN 'CONTRIBUTION_OVERDUE' ELSE 'CONTRIBUTION_DUE' END
+      AND n.created_at>=NOW()-make_interval(days=>
+        CASE
+          WHEN c.status IN ('OVERDUE','REJECTED') AND p.reminder_frequency='WEEKLY' THEN 7
+          WHEN c.status IN ('OVERDUE','REJECTED') AND p.reminder_frequency='MONTHLY' THEN 30
+          WHEN c.status IN ('OVERDUE','REJECTED') AND p.reminder_frequency='CUSTOM' THEN p.reminder_interval
+          WHEN c.status IN ('OVERDUE','REJECTED') THEN 1
+          WHEN p.pre_due_reminder_frequency='WEEKLY' THEN 7
+          WHEN p.pre_due_reminder_frequency='MONTHLY' THEN 30
+          WHEN p.pre_due_reminder_frequency='CUSTOM' THEN p.pre_due_reminder_interval
+          ELSE 1
+        END
+      )
+  )
+ORDER BY c.due_date LIMIT $1 FOR UPDATE OF c SKIP LOCKED`, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -134,7 +134,7 @@ func (s *Service) SubmitProof(ctx context.Context, in ProofInput) error {
 		if c.UserID != in.UserID {
 			return ErrForbidden
 		}
-		if c.Status != "DUE" && c.Status != "OVERDUE" && c.Status != "REJECTED" {
+		if c.Status != "UPCOMING" && c.Status != "DUE" && c.Status != "OVERDUE" && c.Status != "REJECTED" {
 			return ErrInvalidState
 		}
 		if !in.Amount.Equal(c.TotalDue()) {
@@ -147,6 +147,9 @@ func (s *Service) SubmitProof(ctx context.Context, in ProofInput) error {
 				return ErrDuplicateTransactionReference
 			}
 			return err
+		}
+		if _, err = tx.Exec(ctx, `DELETE FROM notifications WHERE contribution_id=$1 AND type IN ('CONTRIBUTION_DUE','CONTRIBUTION_OVERDUE') AND status IN ('PENDING','FAILED')`, c.ID); err != nil {
+			return fmt.Errorf("cancel contribution reminders: %w", err)
 		}
 		rawToken, tokenHash, err := newReviewToken()
 		if err != nil {
@@ -274,20 +277,40 @@ func (s *Service) ProcessOverdue(ctx context.Context, limit int) (int, error) {
 	}
 	var adminID uuid.UUID
 	var adminEmail string
-	if len(items) > 0 {
-		if err = guard.QueryRow(ctx, `SELECT id,email FROM users WHERE role='ADMIN' AND status='ACTIVE' ORDER BY created_at LIMIT 1`).Scan(&adminID, &adminEmail); err != nil {
-			return 0, fmt.Errorf("find overdue notification administrator: %w", err)
-		}
-	}
+	adminLoaded := false
 	for _, c := range items {
 		u, e := s.users.GetByID(ctx, c.UserID)
 		if e != nil {
 			return 0, e
 		}
 		id := c.ID
-		subject, message := "Contribution overdue", fmt.Sprintf("Your contribution is overdue. Total amount due: %s. Please sign in and submit payment proof.", c.TotalDue().StringFixed(2))
-		if _, e = s.notifications.Create(ctx, guard, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_OVERDUE", Channel: "EMAIL", Recipient: u.Email, Subject: &subject, Message: &message, Status: "PENDING"}); e != nil {
+		notificationType := "CONTRIBUTION_DUE"
+		today := time.Now().UTC().Truncate(24 * time.Hour)
+		daysUntilDue := int(c.DueDate.UTC().Truncate(24*time.Hour).Sub(today).Hours() / 24)
+		subject := "Contribution due soon"
+		message := fmt.Sprintf("Your contribution of %s is due in %d days on %s. Please pay before the due date to avoid a late fee.", c.TotalDue().StringFixed(2), daysUntilDue, c.DueDate.Format("2006-01-02"))
+		if daysUntilDue == 1 {
+			message = fmt.Sprintf("Your contribution of %s is due tomorrow on %s. Please pay before the due date to avoid a late fee.", c.TotalDue().StringFixed(2), c.DueDate.Format("2006-01-02"))
+		} else if daysUntilDue <= 0 {
+			subject = "Contribution due"
+			message = fmt.Sprintf("Your contribution of %s is due. Please pay now to avoid a late fee.", c.TotalDue().StringFixed(2))
+		}
+		if c.Status == "OVERDUE" || c.Status == "REJECTED" {
+			notificationType = "CONTRIBUTION_OVERDUE"
+			subject = "Contribution overdue"
+			message = fmt.Sprintf("Your contribution is overdue. Total amount due: %s. Please sign in and submit payment proof.", c.TotalDue().StringFixed(2))
+		}
+		if _, e = s.notifications.Create(ctx, guard, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: notificationType, Channel: "EMAIL", Recipient: u.Email, Subject: &subject, Message: &message, Status: "PENDING"}); e != nil {
 			return 0, e
+		}
+		if notificationType != "CONTRIBUTION_OVERDUE" {
+			continue
+		}
+		if !adminLoaded {
+			if e = guard.QueryRow(ctx, `SELECT id,email FROM users WHERE role='ADMIN' AND status='ACTIVE' ORDER BY created_at LIMIT 1`).Scan(&adminID, &adminEmail); e != nil {
+				return 0, fmt.Errorf("find overdue notification administrator: %w", e)
+			}
+			adminLoaded = true
 		}
 		adminSubject := fmt.Sprintf("Overdue contribution: %s", u.FullName)
 		adminMessage := fmt.Sprintf("%s has an overdue contribution. Total amount due: %s. Due date: %s. Please follow up with the member.", u.FullName, c.TotalDue().StringFixed(2), c.DueDate.Format("2006-01-02"))

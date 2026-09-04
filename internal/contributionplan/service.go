@@ -64,7 +64,7 @@ func (s *Service) Update(ctx context.Context, adminID, id uuid.UUID, p Contribut
 	return p, err
 }
 func validate(p ContributionPlan) error {
-	if !p.Amount.IsPositive() || p.GracePeriodDays < 0 {
+	if !p.Amount.IsPositive() || p.GracePeriodDays < 0 || p.PreDueReminderDaysBeforeDue < 0 || p.PreDueReminderDaysBeforeDue > 365 {
 		return httpx.ErrValidation
 	}
 	p.Frequency = strings.ToUpper(p.Frequency)
@@ -74,13 +74,30 @@ func validate(p ContributionPlan) error {
 	if p.Frequency == "CUSTOM" && (p.IntervalValue == nil || *p.IntervalValue < 1) {
 		return httpx.ErrValidation
 	}
-	if p.ReminderEnabled && p.ReminderFrequency != nil && strings.ToUpper(*p.ReminderFrequency) == "CUSTOM" && (p.ReminderInterval == nil || *p.ReminderInterval < 1) {
+	if p.ReminderEnabled && !validReminder(p.ReminderFrequency, p.ReminderInterval) {
+		return httpx.ErrValidation
+	}
+	if p.PreDueReminderEnabled && !validReminder(p.PreDueReminderFrequency, p.PreDueReminderInterval) {
 		return httpx.ErrValidation
 	}
 	if p.LateFeeEnabled && (p.LateFeePercentage == nil || p.LateFeePercentage.IsNegative() || p.LateFeePercentage.GreaterThan(decimal.NewFromInt(100))) {
 		return httpx.ErrValidation
 	}
 	return nil
+}
+
+func validReminder(frequency *string, interval *int) bool {
+	if frequency == nil {
+		return false
+	}
+	switch strings.ToUpper(*frequency) {
+	case "DAILY", "WEEKLY", "MONTHLY":
+		return true
+	case "CUSTOM":
+		return interval != nil && *interval >= 1 && *interval <= 365
+	default:
+		return false
+	}
 }
 func (s *Service) Create(ctx context.Context, p ContributionPlan) (ContributionPlan, error) {
 	return s.repo.Create(ctx, p)

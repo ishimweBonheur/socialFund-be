@@ -74,7 +74,7 @@ paths:
     post:
       tags: [Contributions]
       summary: Submit or resubmit payment proof
-      description: MEMBER owner only. Accepted while DUE, OVERDUE, or REJECTED. Maximum file size is 10 MB.
+      description: MEMBER owner only. Accepted while UPCOMING, DUE, OVERDUE, or REJECTED. Maximum file size is 10 MB.
       security: [{bearerAuth: []}]
       requestBody:
         required: true
@@ -238,7 +238,7 @@ components:
     Rejection: {type: object, required: [reason], properties: {reason: {type: string}}}
     CreateMember:
       type: object
-      required: [full_name, email, phone, contribution, reminder]
+      required: [full_name, email, phone, contribution, pre_due_reminder, overdue_reminder]
       properties:
         full_name: {type: string}
         email: {type: string, format: email}
@@ -255,9 +255,16 @@ components:
             late_fee_enabled: {type: boolean}
             late_fee_percentage: {type: string, example: "2.00"}
             grace_period_days: {type: integer, minimum: 0}
-        reminder:
+        pre_due_reminder:
           type: object
           properties:
             enabled: {type: boolean}
-            frequency: {type: string, enum: [DAILY, WEEKLY, CUSTOM]}
-            interval: {type: integer, minimum: 1}
+            start_date: {type: string, format: date, description: Date on which reminders begin for the first contribution}
+            frequency: {type: string, enum: [DAILY, WEEKLY, MONTHLY, CUSTOM]}
+            interval: {type: integer, minimum: 1, maximum: 365, description: Required for CUSTOM}
+        overdue_reminder:
+          type: object
+          properties:
+            enabled: {type: boolean}
+            frequency: {type: string, enum: [DAILY, WEEKLY, MONTHLY, CUSTOM]}
+            interval: {type: integer, minimum: 1, maximum: 365, description: Required for CUSTOM}

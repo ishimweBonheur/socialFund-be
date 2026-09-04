@@ -12,9 +12,15 @@ CREATE TABLE
         end_date DATE,
         reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE,
         reminder_frequency VARCHAR(20) CHECK (
-            reminder_frequency IN ('DAILY', 'WEEKLY', 'CUSTOM')
+            reminder_frequency IN ('DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM')
         ),
         reminder_interval INTEGER CHECK (reminder_interval > 0),
+        pre_due_reminder_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        pre_due_reminder_frequency VARCHAR(20) CHECK (
+            pre_due_reminder_frequency IN ('DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM')
+        ),
+        pre_due_reminder_interval INTEGER CHECK (pre_due_reminder_interval > 0),
+        pre_due_reminder_days_before_due INTEGER NOT NULL DEFAULT 3 CHECK (pre_due_reminder_days_before_due >= 0),
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         late_fee_enabled BOOLEAN NOT NULL DEFAULT FALSE,
         late_fee_percentage NUMERIC(5, 2) CHECK (
@@ -55,6 +61,11 @@ CREATE TABLE
             OR reminder_frequency IS DISTINCT
             FROM
                 'CUSTOM'
+        ),
+        CHECK ((NOT pre_due_reminder_enabled) OR pre_due_reminder_frequency IS NOT NULL),
+        CHECK (
+            (pre_due_reminder_frequency = 'CUSTOM' AND pre_due_reminder_interval IS NOT NULL)
+            OR pre_due_reminder_frequency IS DISTINCT FROM 'CUSTOM'
         ),
         CHECK (
             NOT late_fee_enabled

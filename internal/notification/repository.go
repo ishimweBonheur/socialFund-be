@@ -78,7 +78,21 @@ func (r *PostgresRepository) Create(ctx context.Context, db database.DBTX, n Not
 	return n, err
 }
 func (r *PostgresRepository) ListReady(ctx context.Context, limit int) ([]Notification, error) {
-	rows, err := r.db.Query(ctx, `UPDATE notifications SET status='PROCESSING',attempts=attempts+1 WHERE id IN (SELECT id FROM notifications WHERE channel='EMAIL' AND (status='PENDING' OR (status='FAILED' AND next_retry_at<=NOW())) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id,user_id,contribution_id,type,channel,recipient,subject,message,status,attempts,last_error,next_retry_at,sent_at,read_at,attachment_key,proof_url,approve_url,reject_url,created_at`, limit)
+	rows, err := r.db.Query(ctx, `UPDATE notifications SET status='PROCESSING',attempts=attempts+1 WHERE id IN (
+		SELECT n.id FROM notifications n
+		WHERE n.channel='EMAIL'
+		  AND (n.status='PENDING' OR (n.status='FAILED' AND n.next_retry_at<=NOW()))
+		  AND (
+		    n.type NOT IN ('CONTRIBUTION_DUE','CONTRIBUTION_OVERDUE')
+		    OR EXISTS (
+		      SELECT 1 FROM contributions c
+		      WHERE c.id=n.contribution_id
+		        AND ((n.type='CONTRIBUTION_DUE' AND c.status IN ('UPCOMING','DUE'))
+		          OR (n.type='CONTRIBUTION_OVERDUE' AND c.status IN ('OVERDUE','REJECTED')))
+		    )
+		  )
+		ORDER BY n.created_at FOR UPDATE OF n SKIP LOCKED LIMIT $1
+	) RETURNING id,user_id,contribution_id,type,channel,recipient,subject,message,status,attempts,last_error,next_retry_at,sent_at,read_at,attachment_key,proof_url,approve_url,reject_url,created_at`, limit)
 	if err != nil {
 		return nil, err
 	}

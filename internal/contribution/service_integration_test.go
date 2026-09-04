@@ -149,7 +149,7 @@ func TestSchedulerPenaltyReminderAndStateEligibility(t *testing.T) {
 	if _, err := svc.ProcessOverdue(ctx, 100); err != nil {
 		t.Fatal(err)
 	}
-	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND type='CONTRIBUTION_OVERDUE'`, contributionID, 1)
+	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND user_id=(SELECT user_id FROM contributions WHERE id=$1) AND type='CONTRIBUTION_OVERDUE'`, contributionID, 1)
 	if _, err := pool.Exec(ctx, `UPDATE contributions SET status='PENDING' WHERE id=$1`, contributionID); err != nil {
 		t.Fatal(err)
 	}
@@ -159,15 +159,60 @@ func TestSchedulerPenaltyReminderAndStateEligibility(t *testing.T) {
 	if _, err := svc.ProcessOverdue(ctx, 100); err != nil {
 		t.Fatal(err)
 	}
-	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND type='CONTRIBUTION_OVERDUE'`, contributionID, 1)
+	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND user_id=(SELECT user_id FROM contributions WHERE id=$1) AND type='CONTRIBUTION_OVERDUE'`, contributionID, 1)
 	if _, err := pool.Exec(ctx, `UPDATE contributions SET status='REJECTED',rejection_reason='unclear' WHERE id=$1`, contributionID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.ProcessOverdue(ctx, 100); err != nil {
 		t.Fatal(err)
 	}
-	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND type='CONTRIBUTION_OVERDUE'`, contributionID, 2)
+	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND user_id=(SELECT user_id FROM contributions WHERE id=$1) AND type='CONTRIBUTION_OVERDUE'`, contributionID, 2)
 }
+
+func TestSchedulerSendsAdvanceReminderAndStopsAfterProofSubmission(t *testing.T) {
+	pool := openPool(t)
+	ctx := context.Background()
+	suffix := strings.ReplaceAll(uuid.NewString(), "-", "")
+	var adminID, memberID, planID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO users(full_name,email,phone,role,status) VALUES('Admin',$1,$2,'ADMIN','ACTIVE') RETURNING id`, "advance-admin-"+suffix+"@example.test", "aa-"+suffix[:20]).Scan(&adminID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO users(full_name,email,phone,role,status,created_by) VALUES('Member',$1,$2,'MEMBER','ACTIVE',$3) RETURNING id`, "advance-member-"+suffix+"@example.test", "am-"+suffix[:20], adminID).Scan(&memberID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO contribution_plans(user_id,amount,frequency,start_date,reminder_enabled,reminder_frequency,pre_due_reminder_enabled,pre_due_reminder_frequency,pre_due_reminder_days_before_due,created_by) VALUES($1,5000,'DAILY',CURRENT_DATE+3,TRUE,'DAILY',TRUE,'DAILY',3,$2) RETURNING id`, memberID, adminID).Scan(&planID); err != nil {
+		t.Fatal(err)
+	}
+	svc := contribution.NewService(pool, contribution.NewRepository(pool), fund.NewRepository(), audit.NewRepository(), notification.NewRepository(pool), user.NewRepository(pool))
+	if _, err := svc.ProcessOverdue(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	var contributionID uuid.UUID
+	var status string
+	if err := pool.QueryRow(ctx, `SELECT id,status FROM contributions WHERE contribution_plan_id=$1 AND due_date=CURRENT_DATE+3`, planID).Scan(&contributionID, &status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "UPCOMING" {
+		t.Fatalf("status=%s, want UPCOMING", status)
+	}
+	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND type='CONTRIBUTION_DUE' AND channel='EMAIL'`, contributionID, 1)
+	if _, err := pool.Exec(ctx, `UPDATE contributions SET due_date=CURRENT_DATE-1,status='DUE' WHERE id=$1`, contributionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ProcessOverdue(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND user_id=(SELECT user_id FROM contributions WHERE id=$1) AND type='CONTRIBUTION_OVERDUE'`, contributionID, 1)
+	if err := svc.SubmitProof(ctx, contribution.ProofInput{ContributionID: contributionID, UserID: memberID, Amount: decimal.NewFromInt(5000), PaymentMethod: "CASH", TransactionReference: "advance-" + suffix, ProofURL: "/uploads/proofs/advance.pdf"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ProcessOverdue(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND type='CONTRIBUTION_DUE'`, contributionID, 0)
+	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND type='CONTRIBUTION_OVERDUE'`, contributionID, 0)
+}
+
 func TestProofSubmissionOwnershipAndResubmission(t *testing.T) {
 	f := seed(t, openPool(t))
 	ctx := context.Background()

@@ -24,7 +24,7 @@ func (r *PostgresRepository) List(ctx context.Context, f ListFilter) ([]ListItem
 		return nil, 0, err
 	}
 	args = append(args, f.Limit, f.Offset)
-	rows, err := r.db.Query(ctx, `SELECT p.id,p.user_id,p.amount,p.frequency,p.interval_value,p.due_day,p.start_date,p.end_date,p.reminder_enabled,p.reminder_frequency,p.reminder_interval,p.late_fee_enabled,p.late_fee_percentage,p.grace_period_days,p.is_active,p.created_by,p.created_at,p.updated_at,u.full_name,u.email FROM contribution_plans p JOIN users u ON u.id=p.user_id `+where+` ORDER BY p.created_at DESC LIMIT $9 OFFSET $10`, args...)
+	rows, err := r.db.Query(ctx, `SELECT p.id,p.user_id,p.amount,p.frequency,p.interval_value,p.due_day,p.start_date,p.end_date,p.reminder_enabled,p.reminder_frequency,p.reminder_interval,p.pre_due_reminder_enabled,p.pre_due_reminder_frequency,p.pre_due_reminder_interval,p.pre_due_reminder_days_before_due,p.late_fee_enabled,p.late_fee_percentage,p.grace_period_days,p.is_active,p.created_by,p.created_at,p.updated_at,u.full_name,u.email FROM contribution_plans p JOIN users u ON u.id=p.user_id `+where+` ORDER BY p.created_at DESC LIMIT $9 OFFSET $10`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -33,7 +33,7 @@ func (r *PostgresRepository) List(ctx context.Context, f ListFilter) ([]ListItem
 	for rows.Next() {
 		var item ListItem
 		p := &item.ContributionPlan
-		if err = rows.Scan(&p.ID, &p.UserID, &p.Amount, &p.Frequency, &p.IntervalValue, &p.DueDay, &p.StartDate, &p.EndDate, &p.ReminderEnabled, &p.ReminderFrequency, &p.ReminderInterval, &p.LateFeeEnabled, &p.LateFeePercentage, &p.GracePeriodDays, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &item.MemberName, &item.MemberEmail); err != nil {
+		if err = rows.Scan(&p.ID, &p.UserID, &p.Amount, &p.Frequency, &p.IntervalValue, &p.DueDay, &p.StartDate, &p.EndDate, &p.ReminderEnabled, &p.ReminderFrequency, &p.ReminderInterval, &p.PreDueReminderEnabled, &p.PreDueReminderFrequency, &p.PreDueReminderInterval, &p.PreDueReminderDaysBeforeDue, &p.LateFeeEnabled, &p.LateFeePercentage, &p.GracePeriodDays, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &item.MemberName, &item.MemberEmail); err != nil {
 			return nil, 0, err
 		}
 		items = append(items, item)
@@ -49,11 +49,11 @@ func optionalPlan(value string) any {
 
 func (r *PostgresRepository) Lock(ctx context.Context, db database.DBTX, id uuid.UUID) (ContributionPlan, error) {
 	var p ContributionPlan
-	err := db.QueryRow(ctx, `SELECT id,user_id,amount,frequency,interval_value,due_day,start_date,end_date,reminder_enabled,reminder_frequency,reminder_interval,late_fee_enabled,late_fee_percentage,grace_period_days,is_active,created_by,created_at,updated_at FROM contribution_plans WHERE id=$1 FOR UPDATE`, id).Scan(&p.ID, &p.UserID, &p.Amount, &p.Frequency, &p.IntervalValue, &p.DueDay, &p.StartDate, &p.EndDate, &p.ReminderEnabled, &p.ReminderFrequency, &p.ReminderInterval, &p.LateFeeEnabled, &p.LateFeePercentage, &p.GracePeriodDays, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
+	err := db.QueryRow(ctx, `SELECT id,user_id,amount,frequency,interval_value,due_day,start_date,end_date,reminder_enabled,reminder_frequency,reminder_interval,pre_due_reminder_enabled,pre_due_reminder_frequency,pre_due_reminder_interval,pre_due_reminder_days_before_due,late_fee_enabled,late_fee_percentage,grace_period_days,is_active,created_by,created_at,updated_at FROM contribution_plans WHERE id=$1 FOR UPDATE`, id).Scan(&p.ID, &p.UserID, &p.Amount, &p.Frequency, &p.IntervalValue, &p.DueDay, &p.StartDate, &p.EndDate, &p.ReminderEnabled, &p.ReminderFrequency, &p.ReminderInterval, &p.PreDueReminderEnabled, &p.PreDueReminderFrequency, &p.PreDueReminderInterval, &p.PreDueReminderDaysBeforeDue, &p.LateFeeEnabled, &p.LateFeePercentage, &p.GracePeriodDays, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }
 func (r *PostgresRepository) Update(ctx context.Context, db database.DBTX, p ContributionPlan) error {
-	_, err := db.Exec(ctx, `UPDATE contribution_plans SET amount=$2,frequency=$3,interval_value=$4,due_day=$5,reminder_enabled=$6,reminder_frequency=$7,reminder_interval=$8,late_fee_enabled=$9,late_fee_percentage=$10,grace_period_days=$11,updated_at=NOW() WHERE id=$1`, p.ID, p.Amount, p.Frequency, p.IntervalValue, p.DueDay, p.ReminderEnabled, p.ReminderFrequency, p.ReminderInterval, p.LateFeeEnabled, p.LateFeePercentage, p.GracePeriodDays)
+	_, err := db.Exec(ctx, `UPDATE contribution_plans SET amount=$2,frequency=$3,interval_value=$4,due_day=$5,reminder_enabled=$6,reminder_frequency=$7,reminder_interval=$8,pre_due_reminder_enabled=$9,pre_due_reminder_frequency=$10,pre_due_reminder_interval=$11,pre_due_reminder_days_before_due=$12,late_fee_enabled=$13,late_fee_percentage=$14,grace_period_days=$15,updated_at=NOW() WHERE id=$1`, p.ID, p.Amount, p.Frequency, p.IntervalValue, p.DueDay, p.ReminderEnabled, p.ReminderFrequency, p.ReminderInterval, p.PreDueReminderEnabled, p.PreDueReminderFrequency, p.PreDueReminderInterval, p.PreDueReminderDaysBeforeDue, p.LateFeeEnabled, p.LateFeePercentage, p.GracePeriodDays)
 	return err
 }
 
@@ -64,13 +64,13 @@ func NewRepository(db *pgxpool.Pool) *PostgresRepository {
 }
 func (r *PostgresRepository) GetActiveByUserID(ctx context.Context, userID uuid.UUID) (ContributionPlan, error) {
 	var p ContributionPlan
-	err := r.db.QueryRow(ctx, `SELECT id,user_id,amount,frequency,interval_value,due_day,start_date,end_date,reminder_enabled,reminder_frequency,reminder_interval,late_fee_enabled,late_fee_percentage,grace_period_days,is_active,created_by,created_at,updated_at FROM contribution_plans WHERE user_id=$1 AND is_active`, userID).Scan(&p.ID, &p.UserID, &p.Amount, &p.Frequency, &p.IntervalValue, &p.DueDay, &p.StartDate, &p.EndDate, &p.ReminderEnabled, &p.ReminderFrequency, &p.ReminderInterval, &p.LateFeeEnabled, &p.LateFeePercentage, &p.GracePeriodDays, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
+	err := r.db.QueryRow(ctx, `SELECT id,user_id,amount,frequency,interval_value,due_day,start_date,end_date,reminder_enabled,reminder_frequency,reminder_interval,pre_due_reminder_enabled,pre_due_reminder_frequency,pre_due_reminder_interval,pre_due_reminder_days_before_due,late_fee_enabled,late_fee_percentage,grace_period_days,is_active,created_by,created_at,updated_at FROM contribution_plans WHERE user_id=$1 AND is_active`, userID).Scan(&p.ID, &p.UserID, &p.Amount, &p.Frequency, &p.IntervalValue, &p.DueDay, &p.StartDate, &p.EndDate, &p.ReminderEnabled, &p.ReminderFrequency, &p.ReminderInterval, &p.PreDueReminderEnabled, &p.PreDueReminderFrequency, &p.PreDueReminderInterval, &p.PreDueReminderDaysBeforeDue, &p.LateFeeEnabled, &p.LateFeePercentage, &p.GracePeriodDays, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }
 func (r *PostgresRepository) Create(ctx context.Context, p ContributionPlan) (ContributionPlan, error) {
 	return r.CreateWithDB(ctx, r.db, p)
 }
 func (r *PostgresRepository) CreateWithDB(ctx context.Context, db database.DBTX, p ContributionPlan) (ContributionPlan, error) {
-	err := db.QueryRow(ctx, `INSERT INTO contribution_plans(user_id,amount,frequency,interval_value,due_day,start_date,end_date,reminder_enabled,reminder_frequency,reminder_interval,late_fee_enabled,late_fee_percentage,grace_period_days,is_active,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id,created_at,updated_at`, p.UserID, p.Amount, p.Frequency, p.IntervalValue, p.DueDay, p.StartDate, p.EndDate, p.ReminderEnabled, p.ReminderFrequency, p.ReminderInterval, p.LateFeeEnabled, p.LateFeePercentage, p.GracePeriodDays, p.IsActive, p.CreatedBy).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
+	err := db.QueryRow(ctx, `INSERT INTO contribution_plans(user_id,amount,frequency,interval_value,due_day,start_date,end_date,reminder_enabled,reminder_frequency,reminder_interval,pre_due_reminder_enabled,pre_due_reminder_frequency,pre_due_reminder_interval,pre_due_reminder_days_before_due,late_fee_enabled,late_fee_percentage,grace_period_days,is_active,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id,created_at,updated_at`, p.UserID, p.Amount, p.Frequency, p.IntervalValue, p.DueDay, p.StartDate, p.EndDate, p.ReminderEnabled, p.ReminderFrequency, p.ReminderInterval, p.PreDueReminderEnabled, p.PreDueReminderFrequency, p.PreDueReminderInterval, p.PreDueReminderDaysBeforeDue, p.LateFeeEnabled, p.LateFeePercentage, p.GracePeriodDays, p.IsActive, p.CreatedBy).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }

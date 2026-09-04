@@ -132,12 +132,21 @@ func (s *Service) CreateMember(ctx context.Context, adminID uuid.UUID, in Create
 		if err != nil {
 			return mapCreateError(err)
 		}
-		var reminderFrequency *string
-		if in.Reminder.Enabled {
-			value := strings.ToUpper(in.Reminder.Frequency)
-			reminderFrequency = &value
+		var preDueFrequency, overdueFrequency *string
+		if in.PreDueReminder.Enabled {
+			value := strings.ToUpper(in.PreDueReminder.Frequency)
+			preDueFrequency = &value
 		}
-		plan, err := s.plans.CreateWithDB(ctx, tx, contributionplan.ContributionPlan{UserID: created.ID, Amount: in.Contribution.Amount, Frequency: strings.ToUpper(in.Contribution.Frequency), IntervalValue: in.Contribution.IntervalValue, DueDay: in.Contribution.DueDay, StartDate: startDate, ReminderEnabled: in.Reminder.Enabled, ReminderFrequency: reminderFrequency, ReminderInterval: in.Reminder.Interval, LateFeeEnabled: in.Contribution.LateFeeEnabled, LateFeePercentage: in.Contribution.LateFeePercentage, GracePeriodDays: in.Contribution.GracePeriodDays, IsActive: true, CreatedBy: adminID})
+		if in.OverdueReminder.Enabled {
+			value := strings.ToUpper(in.OverdueReminder.Frequency)
+			overdueFrequency = &value
+		}
+		preDueDaysBefore := 0
+		if in.PreDueReminder.Enabled {
+			reminderStart, _ := time.Parse("2006-01-02", in.PreDueReminder.StartDate)
+			preDueDaysBefore = int(firstDueDate(startDate, in.Contribution.Frequency, in.Contribution.DueDay).Sub(reminderStart).Hours() / 24)
+		}
+		plan, err := s.plans.CreateWithDB(ctx, tx, contributionplan.ContributionPlan{UserID: created.ID, Amount: in.Contribution.Amount, Frequency: strings.ToUpper(in.Contribution.Frequency), IntervalValue: in.Contribution.IntervalValue, DueDay: in.Contribution.DueDay, StartDate: startDate, PreDueReminderEnabled: in.PreDueReminder.Enabled, PreDueReminderFrequency: preDueFrequency, PreDueReminderInterval: in.PreDueReminder.Interval, PreDueReminderDaysBeforeDue: preDueDaysBefore, ReminderEnabled: in.OverdueReminder.Enabled, ReminderFrequency: overdueFrequency, ReminderInterval: in.OverdueReminder.Interval, LateFeeEnabled: in.Contribution.LateFeeEnabled, LateFeePercentage: in.Contribution.LateFeePercentage, GracePeriodDays: in.Contribution.GracePeriodDays, IsActive: true, CreatedBy: adminID})
 		if err != nil {
 			return fmt.Errorf("create contribution plan: %w", err)
 		}
@@ -160,15 +169,7 @@ func (s *Service) CreateMember(ctx context.Context, adminID uuid.UUID, in Create
 }
 
 func createInitialContribution(ctx context.Context, tx database.DBTX, plan contributionplan.ContributionPlan) error {
-	dueDate := plan.StartDate
-	if plan.Frequency == "MONTHLY" && plan.DueDay != nil {
-		lastDay := time.Date(plan.StartDate.Year(), plan.StartDate.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
-		day := *plan.DueDay
-		if day > lastDay {
-			day = lastDay
-		}
-		dueDate = time.Date(plan.StartDate.Year(), plan.StartDate.Month(), day, 0, 0, 0, 0, time.UTC)
-	}
+	dueDate := firstDueDate(plan.StartDate, plan.Frequency, plan.DueDay)
 	status := "UPCOMING"
 	// A plan that starts today is immediately payable, even when its configured
 	// monthly due day is later in the month. Future plans remain unavailable.
@@ -177,6 +178,20 @@ func createInitialContribution(ctx context.Context, tx database.DBTX, plan contr
 	}
 	_, err := tx.Exec(ctx, `INSERT INTO contributions(user_id,contribution_plan_id,expected_amount,due_date,status) VALUES($1,$2,$3,$4,$5) ON CONFLICT(contribution_plan_id,due_date) DO NOTHING`, plan.UserID, plan.ID, plan.Amount, dueDate, status)
 	return err
+}
+
+func firstDueDate(startDate time.Time, frequency string, dueDay *int) time.Time {
+	if strings.EqualFold(frequency, "MONTHLY") && dueDay != nil {
+		lastDay := time.Date(startDate.Year(), startDate.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
+		day := min(*dueDay, lastDay)
+		due := time.Date(startDate.Year(), startDate.Month(), day, 0, 0, 0, 0, time.UTC)
+		if due.Before(startDate) {
+			lastDay = time.Date(startDate.Year(), startDate.Month()+2, 0, 0, 0, 0, 0, time.UTC).Day()
+			due = time.Date(startDate.Year(), startDate.Month()+1, min(*dueDay, lastDay), 0, 0, 0, 0, time.UTC)
+		}
+		return due
+	}
+	return startDate
 }
 
 func validateCreateMember(in CreateMemberRequest) (time.Time, error) {
@@ -202,21 +217,49 @@ func validateCreateMember(in CreateMemberRequest) (time.Time, error) {
 	if in.Contribution.GracePeriodDays < 0 || (in.Contribution.LateFeeEnabled && (in.Contribution.LateFeePercentage == nil || in.Contribution.LateFeePercentage.IsNegative() || in.Contribution.LateFeePercentage.GreaterThan(decimal.NewFromInt(100)))) {
 		return time.Time{}, httpx.ErrValidation
 	}
-	if in.Reminder.Enabled {
-		switch strings.ToUpper(in.Reminder.Frequency) {
-		case "DAILY", "WEEKLY", "CUSTOM":
-		default:
-			return time.Time{}, httpx.ErrValidation
-		}
-		if strings.EqualFold(in.Reminder.Frequency, "CUSTOM") && (in.Reminder.Interval == nil || *in.Reminder.Interval < 1) {
-			return time.Time{}, httpx.ErrValidation
-		}
-	}
 	startDate, err := time.Parse("2006-01-02", in.Contribution.StartDate)
 	if err != nil {
 		return time.Time{}, httpx.ErrValidation
 	}
+	if err = validateReminder(in.OverdueReminder, false); err != nil {
+		return time.Time{}, err
+	}
+	if in.PreDueReminder.Enabled {
+		if err = validateReminder(in.PreDueReminder, true); err != nil {
+			return time.Time{}, err
+		}
+		reminderStart, parseErr := time.Parse("2006-01-02", in.PreDueReminder.StartDate)
+		if parseErr != nil {
+			return time.Time{}, httpx.ErrValidation
+		}
+		daysBeforeDue := int(firstDueDate(startDate, frequency, in.Contribution.DueDay).Sub(reminderStart).Hours() / 24)
+		if daysBeforeDue < 0 || daysBeforeDue > 365 {
+			return time.Time{}, httpx.ErrValidation
+		}
+	}
 	return startDate, nil
+}
+
+func validateReminder(reminder ReminderRequest, requireStart bool) error {
+	if !reminder.Enabled {
+		return nil
+	}
+	switch strings.ToUpper(reminder.Frequency) {
+	case "DAILY", "WEEKLY", "MONTHLY":
+		if reminder.Interval != nil {
+			return httpx.ErrValidation
+		}
+	case "CUSTOM":
+		if reminder.Interval == nil || *reminder.Interval < 1 || *reminder.Interval > 365 {
+			return httpx.ErrValidation
+		}
+	default:
+		return httpx.ErrValidation
+	}
+	if requireStart && reminder.StartDate == "" {
+		return httpx.ErrValidation
+	}
+	return nil
 }
 func mapCreateError(err error) error {
 	var pgErr *pgconn.PgError

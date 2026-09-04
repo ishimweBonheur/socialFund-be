@@ -8,11 +8,12 @@ import (
 )
 
 type CreateMemberRequest struct {
-	FullName     string              `json:"full_name"`
-	Email        string              `json:"email"`
-	Phone        string              `json:"phone"`
-	Contribution ContributionRequest `json:"contribution"`
-	Reminder     ReminderRequest     `json:"reminder"`
+	FullName        string              `json:"full_name"`
+	Email           string              `json:"email"`
+	Phone           string              `json:"phone"`
+	Contribution    ContributionRequest `json:"contribution"`
+	PreDueReminder  ReminderRequest     `json:"pre_due_reminder"`
+	OverdueReminder ReminderRequest     `json:"overdue_reminder"`
 }
 
 type ContributionRequest struct {
@@ -28,6 +29,7 @@ type ContributionRequest struct {
 
 type ReminderRequest struct {
 	Enabled   bool   `json:"enabled"`
+	StartDate string `json:"start_date,omitempty"`
 	Frequency string `json:"frequency"`
 	Interval  *int   `json:"interval,omitempty"`
 }
