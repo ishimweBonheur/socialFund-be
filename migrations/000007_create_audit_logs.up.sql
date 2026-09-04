@@ -1,7 +1,13 @@
 CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id) ON DELETE RESTRICT,
-    action VARCHAR(80) NOT NULL, entity_type VARCHAR(80) NOT NULL, entity_id UUID NOT NULL,
-    old_data JSONB, new_data JSONB, ip_address INET, user_agent TEXT,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+    user_id UUID REFERENCES users(id) ON DELETE RESTRICT,
+    action VARCHAR(80) NOT NULL, 
+    entity_type VARCHAR(80) NOT NULL,
+     entity_id UUID NOT NULL,
+    old_data JSONB,
+     new_data JSONB,
+      ip_address INET,
+       user_agent TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX audit_logs_user_id_idx ON audit_logs (user_id);
