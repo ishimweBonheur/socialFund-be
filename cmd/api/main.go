@@ -23,6 +23,7 @@ import (
 	"socialfund/internal/httpx"
 	appmetrics "socialfund/internal/metrics"
 	"socialfund/internal/notification"
+	"socialfund/internal/paymentconfig"
 	"socialfund/internal/realtime"
 	"socialfund/internal/user"
 
@@ -75,6 +76,7 @@ func main() {
 	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTExpiration)
 	authService := auth.NewService(pool, userRepo, auditRepo, auth.NewGoogleVerifier(cfg.GoogleClientID), tokenManager, logger)
 	notificationService := notification.NewService(notificationRepo, pool, auditRepo)
+	paymentSettings := paymentconfig.NewHandler(paymentconfig.NewService(paymentconfig.NewRepository(pool)), logger)
 	dashboardHandler := dashboard.NewHandler(pool, logger)
 	metricsRegistry := appmetrics.New(pool)
 	generalLimiter := httpx.NewRateLimiter(cfg.RateLimitRPM)
@@ -150,6 +152,7 @@ func main() {
 			protected.Mount("/dashboard", dashboardHandler.MemberRoutes())
 			protected.Mount("/fund", fund.NewHandler(fundRepo, logger).MemberRoutes())
 			protected.With(authLimiter.Middleware).Mount("/notifications", notification.NewHandler(notificationService, logger).MemberRoutes())
+			protected.Mount("/payment-settings", paymentSettings.MemberRoutes())
 			protected.Group(func(adminOnly chi.Router) {
 				adminOnly.Use(auth.RequireAdmin)
 				adminOnly.Mount("/contribution-plans", contributionplan.NewHandler(planService).Routes())
@@ -163,6 +166,7 @@ func main() {
 			admin.Mount("/audit-logs", audit.NewHandler(auditRepo, logger).Routes())
 			admin.Mount("/dashboard", dashboardHandler.AdminRoutes())
 			admin.With(authLimiter.Middleware).Mount("/notifications", notification.NewHandler(notificationService, logger).Routes())
+			admin.Mount("/payment-settings", paymentSettings.AdminRoutes())
 		})
 	})
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}

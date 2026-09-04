@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,10 +32,12 @@ func (s *RoutingSender) Send(ctx context.Context, n Notification) error {
 		data, err = s.loader.LoadAccountCreatedEmailData(ctx, n.UserID)
 		if err == nil {
 			data.LoginURL = BuildLoginURL(s.frontendURL)
+			data.LogoURL = strings.TrimRight(s.frontendURL, "/") + "/social-fund-icon.png"
 			data.Recipient = n.Recipient
 			err = s.email.SendAccountCreated(ctx, data)
 		}
 	} else {
+		n.LogoURL = strings.TrimRight(s.frontendURL, "/") + "/social-fund-icon.png"
 		err = s.email.SendNotification(ctx, n)
 	}
 	status := "sent"

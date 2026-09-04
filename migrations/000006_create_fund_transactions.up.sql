@@ -39,3 +39,16 @@ CREATE INDEX fund_transactions_created_at_idx ON fund_transactions (created_at);
 CREATE INDEX fund_transactions_contribution_id_idx ON fund_transactions (contribution_id)
 WHERE
     contribution_id IS NOT NULL;
+
+CREATE TABLE payment_settings (
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    account_name VARCHAR(120) NOT NULL,
+    payment_type VARCHAR(20) NOT NULL CHECK (payment_type IN ('PHONE','MERCHANT')),
+    phone_number VARCHAR(30), merchant_code VARCHAR(60),
+    ussd_template VARCHAR(200) NOT NULL,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK ((payment_type='PHONE' AND phone_number IS NOT NULL) OR (payment_type='MERCHANT' AND merchant_code IS NOT NULL))
+);
+INSERT INTO payment_settings(id,account_name,payment_type,phone_number,ussd_template)
+VALUES(1,'Social Fund','PHONE','0784963589','*182*1*1*{phone_number}#');

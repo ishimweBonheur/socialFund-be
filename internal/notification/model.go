@@ -25,6 +25,7 @@ type Notification struct {
 	ApproveURL     *string
 	RejectURL      *string
 	CreatedAt      time.Time
+	LogoURL        string
 }
 type Filter struct {
 	Status, Type, DateFrom, DateTo string

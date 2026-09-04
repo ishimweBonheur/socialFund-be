@@ -62,10 +62,18 @@ CREATE TABLE
             FROM
                 'CUSTOM'
         ),
-        CHECK ((NOT pre_due_reminder_enabled) OR pre_due_reminder_frequency IS NOT NULL),
         CHECK (
-            (pre_due_reminder_frequency = 'CUSTOM' AND pre_due_reminder_interval IS NOT NULL)
-            OR pre_due_reminder_frequency IS DISTINCT FROM 'CUSTOM'
+            (NOT pre_due_reminder_enabled)
+            OR pre_due_reminder_frequency IS NOT NULL
+        ),
+        CHECK (
+            (
+                pre_due_reminder_frequency = 'CUSTOM'
+                AND pre_due_reminder_interval IS NOT NULL
+            )
+            OR pre_due_reminder_frequency IS DISTINCT
+            FROM
+                'CUSTOM'
         ),
         CHECK (
             NOT late_fee_enabled

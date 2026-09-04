@@ -23,23 +23,164 @@ type AccountCreatedEmailData struct {
 	PaymentDue            string
 	LoginURL              string
 	Recipient             string
+	LogoURL               string
+	Heading               string
+	Intro                 string
 }
 
 func BuildLoginURL(frontendURL string) string {
 	return strings.TrimRight(frontendURL, "/") + "/login"
 }
 
-var htmlTemplate = template.Must(template.New("account-created").Parse(`<!doctype html><html><body style="margin:0;background:#EAE0CF;font-family:Arial,sans-serif;color:#213448"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:32px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#EAE0CF;border-radius:12px;overflow:hidden;box-shadow:0 18px 48px #94B4C1"><tr><td style="padding:24px 30px;background:#213448;color:#EAE0CF;font-size:22px;font-weight:bold">Social Fund<br><span style="font-size:11px;font-weight:normal;color:#94B4C1">Community finance</span></td></tr><tr><td style="padding:32px 30px"><div style="display:inline-block;padding:6px 10px;border-radius:6px;background:#94B4C1;color:#213448;font-size:11px;font-weight:bold;letter-spacing:1px">ACCOUNT CREATED</div><h1 style="font-size:24px;margin:20px 0 8px">Welcome, {{.FullName}}</h1><p style="color:#547792;line-height:1.6;margin-top:0">Your Social Fund account has been created successfully.</p><h2 style="font-size:15px;margin-top:28px">Account details</h2><table role="presentation" width="100%" cellspacing="0" cellpadding="11" style="background:#94B4C1;border-radius:9px;box-shadow:0 8px 24px #94B4C1"><tr><td><strong>Name</strong></td><td>{{.FullName}}</td></tr><tr><td><strong>Email</strong></td><td>{{.Email}}</td></tr><tr><td><strong>Phone</strong></td><td>{{.Phone}}</td></tr><tr><td><strong>Contribution amount</strong></td><td>{{.ContributionAmount}}</td></tr><tr><td><strong>Contribution frequency</strong></td><td>{{.ContributionFrequency}}</td></tr><tr><td><strong>Payment due</strong></td><td>{{.PaymentDue}}</td></tr></table><p style="margin-top:26px"><strong>Your account is currently inactive.</strong></p><p style="color:#547792;line-height:1.6">Sign in with your registered Google account ({{.Email}}) to verify and activate it.</p><p style="margin:28px 0 8px"><a href="{{.LoginURL}}" style="display:inline-block;background:#547792;color:#EAE0CF;text-decoration:none;padding:13px 22px;border-radius:8px;font-weight:bold;box-shadow:0 8px 18px #94B4C1">Login to Social Fund</a></p></td></tr><tr><td style="padding:18px 30px;background:#94B4C1;color:#213448;font-size:12px">This is an automated message from Social Fund.</td></tr></table></td></tr></table></body></html>`))
+var htmlTemplate = template.Must(template.New("account-created").Parse(`
+<!doctype html>
+<html>
+  <body style="margin:0;background:#EAE0CF;font-family:Arial,sans-serif;color:#213448">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+      <tr>
+        <td style="padding:32px 12px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#EAE0CF;border-radius:12px;overflow:hidden;box-shadow:0 18px 48px #94B4C1">
+            <tr>
+              <td style="padding:24px 30px;background:#213448;color:#EAE0CF;font-size:22px;font-weight:bold">
+                {{if .LogoURL}}<img src="{{.LogoURL}}" width="42" height="42" alt="Social Fund" style="display:inline-block;vertical-align:middle;margin-right:12px;border-radius:10px">{{end}}Social Fund
+                <br>
+                <span style="font-size:11px;font-weight:normal;color:#94B4C1">Community finance</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 30px">
+                <div style="display:inline-block;padding:6px 10px;border-radius:6px;background:#94B4C1;color:#213448;font-size:11px;font-weight:bold;letter-spacing:1px">
+                  ACCOUNT CREATED
+                </div>
+                <h1 style="font-size:24px;margin:20px 0 8px">{{.Heading}}</h1>
+                <p style="color:#547792;line-height:1.6;margin-top:0">
+                  {{.Intro}}
+                </p>
+
+                <h2 style="font-size:15px;margin-top:28px">Account details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="11" style="background:#94B4C1;border-radius:9px;box-shadow:0 8px 24px #94B4C1">
+                  <tr>
+                    <td><strong>Name</strong></td>
+                    <td>{{.FullName}}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Email</strong></td>
+                    <td>{{.Email}}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Phone</strong></td>
+                    <td>{{.Phone}}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Contribution amount</strong></td>
+                    <td>{{.ContributionAmount}}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Contribution frequency</strong></td>
+                    <td>{{.ContributionFrequency}}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Payment due</strong></td>
+                    <td>{{.PaymentDue}}</td>
+                  </tr>
+                </table>
+
+                <p style="margin-top:26px">
+                  <strong>Your account is currently inactive.</strong>
+                </p>
+                <p style="color:#547792;line-height:1.6">
+                  Sign in with your registered Google account ({{.Email}}) to verify and activate it.
+                </p>
+                <p style="margin:28px 0 8px">
+                  <a href="{{.LoginURL}}" style="display:inline-block;background:#547792;color:#EAE0CF;text-decoration:none;padding:13px 22px;border-radius:8px;font-weight:bold;box-shadow:0 8px 18px #94B4C1">
+                    Login to Social Fund
+                  </a>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 30px;background:#94B4C1;color:#213448;font-size:12px">
+                This is an automated message from Social Fund.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+`))
 
 type notificationEmailData struct {
-	Subject, Label, Accent, Tint string
-	Body                         template.HTML
-	ApproveURL, RejectURL        string
+	Subject, Heading, Label, Accent, Tint, LogoURL string
+	Body                                           template.HTML
+	ApproveURL, RejectURL                          string
 }
 
 var urlPattern = regexp.MustCompile(`https?://[^\s<]+`)
 
-var notificationHTMLTemplate = template.Must(template.New("notification").Parse(`<!doctype html><html><body style="margin:0;background:#EAE0CF;font-family:Arial,sans-serif;color:#213448"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:32px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#EAE0CF;border-radius:12px;overflow:hidden;box-shadow:0 18px 48px #94B4C1"><tr><td style="padding:24px 30px;background:#213448;color:#EAE0CF;font-size:22px;font-weight:bold">Social Fund<br><span style="font-size:11px;font-weight:normal;color:#94B4C1">Community finance</span></td></tr><tr><td style="padding:32px 30px"><div style="display:inline-block;padding:6px 10px;border-radius:6px;background:{{.Tint}};color:{{.Accent}};font-size:11px;font-weight:bold;letter-spacing:1px">{{.Label}}</div><h1 style="font-size:24px;line-height:1.3;margin:20px 0">{{.Subject}}</h1><div style="background:#94B4C1;border-radius:9px;padding:20px;color:#213448;font-size:15px;line-height:1.7;box-shadow:0 8px 24px #94B4C1">{{.Body}}</div>{{if .ApproveURL}}<table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:14px"><tr><td style="padding-right:10px"><a href="{{.ApproveURL}}" style="display:inline-block;background:#547792;color:#EAE0CF;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">Approve</a></td><td><a href="{{.RejectURL}}" style="display:inline-block;background:#213448;color:#EAE0CF;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">Reject</a></td></tr></table>{{end}}</td></tr><tr><td style="padding:18px 30px;background:#94B4C1;color:#213448;font-size:12px">This is an automated message from Social Fund. Please keep transaction references for your records.</td></tr></table></td></tr></table></body></html>`))
+var notificationHTMLTemplate = template.Must(template.New("notification").Parse(`
+<!doctype html>
+<html>
+  <body style="margin:0;background:#EAE0CF;font-family:Arial,sans-serif;color:#213448">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+      <tr>
+        <td style="padding:32px 12px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#EAE0CF;border-radius:12px;overflow:hidden;box-shadow:0 18px 48px #94B4C1">
+            <!-- Header -->
+            <tr>
+              <td style="padding:24px 30px;background:#213448;color:#EAE0CF;font-size:22px;font-weight:bold">
+                {{if .LogoURL}}<img src="{{.LogoURL}}" width="42" height="42" alt="Social Fund" style="display:inline-block;vertical-align:middle;margin-right:12px;border-radius:10px">{{end}}Social Fund
+                <br>
+                <span style="font-size:11px;font-weight:normal;color:#94B4C1">Community finance</span>
+              </td>
+            </tr>
+            <!-- Body -->
+            <tr>
+              <td style="padding:32px 30px">
+                <!-- Label Badge -->
+                <div style="display:inline-block;padding:6px 10px;border-radius:6px;background:{{.Tint}};color:{{.Accent}};font-size:11px;font-weight:bold;letter-spacing:1px">
+                  {{.Label}}
+                </div>
+                <!-- Subject -->
+                <h1 style="font-size:24px;line-height:1.3;margin:20px 0">{{.Heading}}</h1>
+                <!-- Body Content -->
+                <div style="background:#94B4C1;border-radius:9px;padding:20px;color:#213448;font-size:15px;line-height:1.7;box-shadow:0 8px 24px #94B4C1">
+                  {{.Body}}
+                </div>
+                <!-- Action Buttons (conditional) -->
+                {{if .ApproveURL}}
+                  <table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:14px">
+                    <tr>
+                      <td style="padding-right:10px">
+                        <a href="{{.ApproveURL}}" style="display:inline-block;background:#547792;color:#EAE0CF;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">
+                          Approve
+                        </a>
+                      </td>
+                      <td>
+                        <a href="{{.RejectURL}}" style="display:inline-block;background:#213448;color:#EAE0CF;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">
+                          Reject
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                {{end}}
+              </td>
+            </tr>
+            <!-- Footer -->
+            <tr>
+              <td style="padding:18px 30px;background:#94B4C1;color:#213448;font-size:12px">
+                This is an automated message from Social Fund. Please keep transaction references for your records.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+`))
 
 func notificationAppearance(kind string) (string, string, string) {
 	switch kind {
@@ -61,17 +202,20 @@ func renderNotification(n Notification) (string, string, error) {
 		return "", "", fmt.Errorf("notification content is missing")
 	}
 	label, accent, tint := notificationAppearance(n.Type)
-	escaped := html.EscapeString(*n.Message)
+	subject, heading, message := *n.Subject, *n.Subject, *n.Message
+	escaped := html.EscapeString(message)
 	escaped = urlPattern.ReplaceAllStringFunc(escaped, func(value string) string {
 		return `<a href="` + value + `" style="color:#547792;font-weight:bold;word-break:break-all">` + value + `</a>`
 	})
 	escaped = strings.ReplaceAll(escaped, "\n", "<br>")
 	data := notificationEmailData{
-		Subject: *n.Subject,
+		Subject: subject,
+		Heading: heading,
 		Label:   label,
 		Accent:  accent,
 		Tint:    tint,
 		Body:    template.HTML(escaped), // #nosec G203 -- content is escaped before URLs and line breaks are added.
+		LogoURL: n.LogoURL,
 	}
 	if n.ApproveURL != nil {
 		data.ApproveURL = *n.ApproveURL
@@ -83,7 +227,7 @@ func renderNotification(n Notification) (string, string, error) {
 	if err := notificationHTMLTemplate.Execute(&body, data); err != nil {
 		return "", "", fmt.Errorf("render notification email: %w", err)
 	}
-	return body.String(), *n.Message, nil
+	return body.String(), message, nil
 }
 
 var plainTemplate = texttemplate.Must(texttemplate.New("account-created").Parse(`Hello {{.FullName}},
@@ -108,6 +252,8 @@ Login to Social Fund:
 Your account will become active after your registered Google account is successfully verified.`))
 
 func renderAccountCreated(data AccountCreatedEmailData) (string, string, error) {
+	data.Heading = "Welcome, " + data.FullName
+	data.Intro = "Your Social Fund account has been created successfully."
 	var htmlBody, plainBody bytes.Buffer
 	if err := htmlTemplate.Execute(&htmlBody, data); err != nil {
 		return "", "", fmt.Errorf("render HTML welcome email: %w", err)
