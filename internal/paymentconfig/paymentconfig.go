@@ -7,13 +7,13 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"socialfund/internal/httpx"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"socialfund/internal/httpx"
 )
 
 type Settings struct {
