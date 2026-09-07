@@ -13,6 +13,7 @@ import (
 )
 
 const accountCreatedSubject = "Your Social Fund Account Has Been Created"
+const logoContentID = "social-fund-logo"
 
 type AccountCreatedEmailData struct {
 	FullName              string
@@ -42,7 +43,7 @@ var htmlTemplate = template.Must(template.New("account-created").Parse(`
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:auto;background:#EAE0CF;border-radius:12px;overflow:hidden;box-shadow:0 18px 48px #94B4C1">
             <tr>
               <td style="padding:24px 30px;background:#213448;color:#EAE0CF;font-size:22px;font-weight:bold">
-                {{if .LogoURL}}<img src="{{.LogoURL}}" width="42" height="42" alt="Social Fund" style="display:inline-block;vertical-align:middle;margin-right:12px;border-radius:10px">{{end}}Social Fund
+                {{if .LogoURL}}<img src="{{.LogoURL}}" width="48" height="48" alt="Social Fund" style="display:inline-block;vertical-align:middle;margin-right:12px">{{else}}<span style="display:inline-block;width:42px;height:42px;line-height:42px;text-align:center;vertical-align:middle;margin-right:12px;border:2px solid #EAE0CF;border-radius:50%;color:#F5C978;font-size:16px;font-weight:bold">SF</span>{{end}}Social Fund
                 <br>
                 <span style="font-size:11px;font-weight:normal;color:#94B4C1">Community finance</span>
               </td>
@@ -116,6 +117,9 @@ type notificationEmailData struct {
 	Subject, Heading, Label, Accent, Tint, LogoURL string
 	Body                                           template.HTML
 	ApproveURL, RejectURL                          string
+	PaymentURL                                     string
+	Reminder                                       *PaymentReminderData
+	QRCodeData                                     template.URL
 }
 
 var urlPattern = regexp.MustCompile(`https?://[^\s<]+`)
@@ -131,7 +135,7 @@ var notificationHTMLTemplate = template.Must(template.New("notification").Parse(
             <!-- Header -->
             <tr>
               <td style="padding:24px 30px;background:#213448;color:#EAE0CF;font-size:22px;font-weight:bold">
-                {{if .LogoURL}}<img src="{{.LogoURL}}" width="42" height="42" alt="Social Fund" style="display:inline-block;vertical-align:middle;margin-right:12px;border-radius:10px">{{end}}Social Fund
+                {{if .LogoURL}}<img src="{{.LogoURL}}" width="48" height="48" alt="Social Fund" style="display:inline-block;vertical-align:middle;margin-right:12px">{{else}}<span style="display:inline-block;width:42px;height:42px;line-height:42px;text-align:center;vertical-align:middle;margin-right:12px;border:2px solid #EAE0CF;border-radius:50%;color:#F5C978;font-size:16px;font-weight:bold">SF</span>{{end}}Social Fund
                 <br>
                 <span style="font-size:11px;font-weight:normal;color:#94B4C1">Community finance</span>
               </td>
@@ -145,10 +149,40 @@ var notificationHTMLTemplate = template.Must(template.New("notification").Parse(
                 </div>
                 <!-- Subject -->
                 <h1 style="font-size:24px;line-height:1.3;margin:20px 0">{{.Heading}}</h1>
-                <!-- Body Content -->
-                <div style="background:#94B4C1;border-radius:9px;padding:20px;color:#213448;font-size:15px;line-height:1.7;box-shadow:0 8px 24px #94B4C1">
-                  {{.Body}}
-                </div>
+                {{if .Reminder}}
+                  <p style="font-size:18px;margin:0 0 12px">Hello {{.Reminder.MemberName}},</p>
+                  {{if eq .Label "PAYMENT OVERDUE"}}
+                  <p style="color:#213448;line-height:1.6;margin-top:0">Your contribution of {{.Reminder.TotalAmountDue}} was due on {{.Reminder.DueDate}} and has not yet been recorded as paid.</p>
+                  <p style="color:#213448;line-height:1.6">Please make your payment as soon as possible.</p>
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#FFF7E8;border:1px solid #F0D39A;border-radius:9px;margin:20px 0">
+                    <tr><td style="padding:14px 18px"><strong>Original amount</strong><br>{{.Reminder.OriginalAmount}}</td><td style="padding:14px 18px"><strong>Late fee</strong><br>{{if eq .Reminder.LateFee "0.00 RWF"}}None{{else}}{{.Reminder.LateFee}}{{end}}</td></tr>
+                    <tr><td style="padding:14px 18px"><strong>Total amount due</strong><br><strong>{{.Reminder.TotalAmountDue}}</strong></td><td style="padding:14px 18px"><strong>Days overdue</strong><br>{{.Reminder.DaysOverdue}} days</td></tr>
+                  </table>
+                  {{else}}
+                  <p style="color:#213448;line-height:1.6;margin-top:0">{{.Body}}</p>
+                  {{end}}
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F3F7FA;border:1px solid #D9E6EF;border-radius:9px;margin:24px 0">
+                    <tr>
+                      <td style="padding:18px 20px;border-right:1px solid #D9E6EF;width:50%"><div style="color:#2876B2;font-size:12px;font-weight:bold;text-transform:uppercase">Amount due</div><strong style="display:block;font-size:24px;margin-top:6px">{{.Reminder.AmountDue}}</strong></td>
+                      <td style="padding:18px 20px"><div style="color:#2876B2;font-size:12px;font-weight:bold;text-transform:uppercase">Due date</div><strong style="display:block;font-size:20px;margin-top:8px">{{.Reminder.DueDate}}</strong></td>
+                    </tr>
+                  </table>
+                  <div style="border:1px solid #E3E3E3;border-radius:9px;padding:20px;margin-bottom:18px">
+                    <h2 style="font-size:17px;margin:0 0 16px">How to pay</h2>
+                    <p style="margin:8px 0"><strong>Pay to:</strong> {{.Reminder.AccountName}}</p>
+                    <p style="margin:8px 0"><strong>Payment method:</strong> {{.Reminder.PaymentMethodLabel}}</p>
+                    {{if eq .Reminder.PaymentType "PHONE"}}<p style="margin:8px 0"><strong>Phone number:</strong> {{.Reminder.PhoneNumber}}</p>{{end}}
+                    {{if eq .Reminder.PaymentType "MERCHANT"}}<p style="margin:8px 0"><strong>Merchant code:</strong> {{.Reminder.MerchantCode}}</p>{{end}}
+                    <p style="margin:8px 0"><strong>USSD code:</strong> {{.Reminder.USSDCode}}</p>
+                    {{if .QRCodeData}}<div style="margin:18px 0 4px;text-align:center"><div style="color:#2876B2;font-weight:bold;margin-bottom:8px">Scan to dial payment</div><img src="{{.QRCodeData}}" width="220" height="220" alt="Scan to dial payment" style="display:inline-block;border:1px solid #D9E6EF;padding:8px;background:#fff"></div>{{end}}
+                  </div>
+                  {{if .PaymentURL}}<p style="margin:0"><a href="{{.PaymentURL}}" style="display:block;text-align:center;background:#2876B2;color:#fff;text-decoration:none;padding:13px 18px;border-radius:7px;font-weight:bold">Add payment details and upload proof</a></p>{{end}}
+                  <p style="background:#F3F7FA;border-radius:8px;padding:15px;margin:18px 0 0;color:#213448;line-height:1.5"><strong>After making your payment, reply to this email with:</strong><br>Amount: {{.Reminder.AmountDue}}<br>Reference ID: 123456789<br>Payment Date: {{.Reminder.DueDate}}<br><br>Attach a screenshot or PDF of your receipt.</p>
+                {{else}}
+                  <div style="background:#94B4C1;border-radius:9px;padding:20px;color:#213448;font-size:15px;line-height:1.7;box-shadow:0 8px 24px #94B4C1">
+                    {{.Body}}
+                  </div>
+                {{end}}
                 <!-- Action Buttons (conditional) -->
                 {{if .ApproveURL}}
                   <table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:14px">
@@ -203,19 +237,37 @@ func renderNotification(n Notification) (string, string, error) {
 	}
 	label, accent, tint := notificationAppearance(n.Type)
 	subject, heading, message := *n.Subject, *n.Subject, *n.Message
+	if n.Reminder != nil {
+		heading = "Your contribution is almost due"
+		if n.Type == "CONTRIBUTION_OVERDUE" {
+			label = "PAYMENT OVERDUE"
+		} else if n.Reminder.DaysUntilDue == 1 {
+			label = "DUE TOMORROW"
+		} else if n.Reminder.DaysUntilDue > 1 {
+			label = fmt.Sprintf("DUE IN %d DAYS", n.Reminder.DaysUntilDue)
+		} else {
+			label = "PAYMENT DUE"
+		}
+	}
 	escaped := html.EscapeString(message)
 	escaped = urlPattern.ReplaceAllStringFunc(escaped, func(value string) string {
 		return `<a href="` + value + `" style="color:#547792;font-weight:bold;word-break:break-all">` + value + `</a>`
 	})
 	escaped = strings.ReplaceAll(escaped, "\n", "<br>")
+
 	data := notificationEmailData{
-		Subject: subject,
-		Heading: heading,
-		Label:   label,
-		Accent:  accent,
-		Tint:    tint,
-		Body:    template.HTML(escaped), // #nosec G203 -- content is escaped before URLs and line breaks are added.
-		LogoURL: n.LogoURL,
+		Subject:    subject,
+		Heading:    heading,
+		Label:      label,
+		Accent:     accent,
+		Tint:       tint,
+		Body:       template.HTML(escaped),
+		LogoURL:    n.LogoURL,
+		PaymentURL: n.PaymentURL,
+		Reminder:   n.Reminder,
+	}
+	if n.Reminder != nil {
+		data.QRCodeData = template.URL(n.Reminder.QRCodeData) // #nosec G203 -- fixed local CID generated by the backend.
 	}
 	if n.ApproveURL != nil {
 		data.ApproveURL = *n.ApproveURL
@@ -254,6 +306,7 @@ Your account will become active after your registered Google account is successf
 func renderAccountCreated(data AccountCreatedEmailData) (string, string, error) {
 	data.Heading = "Welcome, " + data.FullName
 	data.Intro = "Your Social Fund account has been created successfully."
+
 	var htmlBody, plainBody bytes.Buffer
 	if err := htmlTemplate.Execute(&htmlBody, data); err != nil {
 		return "", "", fmt.Errorf("render HTML welcome email: %w", err)

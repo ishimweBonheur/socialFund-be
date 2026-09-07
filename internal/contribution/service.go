@@ -8,10 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"socialfund/internal/audit"
 	"socialfund/internal/database"
 	"socialfund/internal/fund"
@@ -20,6 +16,11 @@ import (
 	"socialfund/internal/user"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var ErrInvalidState = errors.New("contribution is not pending")
@@ -96,7 +97,7 @@ func (s *Service) Approve(ctx context.Context, in ApprovalInput) error {
 		if _, err = s.audit.Create(ctx, tx, audit.AuditLog{UserID: &admin, Action: "CONTRIBUTION_APPROVED", EntityType: "CONTRIBUTION", EntityID: c.ID, OldData: oldData, NewData: newData}); err != nil {
 			return err
 		}
-		subject, message := "Contribution approved", fmt.Sprintf("Your contribution of %s has been approved. Payment method: %s. Reference: %s. Approval date: %s. Status: APPROVED.", c.PaidAmount.StringFixed(2), *c.PaymentMethod, *c.TransactionReference, time.Now().Format(time.RFC3339))
+		subject, message := "Payment verified - Social Fund", fmt.Sprintf("Your payment of %s has been verified successfully. Payment method: %s. Reference: %s. Payment date: %s. Status: PAID. Thank you.", c.PaidAmount.StringFixed(2), *c.PaymentMethod, *c.TransactionReference, time.Now().Format("2 January 2006"))
 		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_APPROVED", Channel: "EMAIL", Recipient: email, Subject: &subject, Message: &message, Status: "PENDING"})
 		return err
 	})
@@ -254,7 +255,7 @@ func (s *Service) Reject(ctx context.Context, in RejectionInput) error {
 			return err
 		}
 		id := c.ID
-		subject, message := "Contribution proof rejected", fmt.Sprintf("Your contribution of %s was rejected: %s. Sign in at %s/login and upload a new proof.", c.TotalDue().StringFixed(2), in.Reason, s.frontendURL)
+		subject, message := "Payment proof requires attention - Social Fund", fmt.Sprintf("Your payment proof could not be verified.\n\nReason: %s\n\nPlease make the payment again or submit a new payment proof. You can use the portal at %s/login or reply to this email when submitting new proof.", in.Reason, s.frontendURL)
 		_, err = s.notifications.Create(ctx, tx, notification.Notification{UserID: c.UserID, ContributionID: &id, Type: "CONTRIBUTION_REJECTED", Channel: "EMAIL", Recipient: email, Subject: &subject, Message: &message, Status: "PENDING"})
 		return err
 	})

@@ -2,12 +2,16 @@ package notification
 
 import (
 	"context"
+	"fmt"
+	"socialfund/internal/database"
+	"strings"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
-	"socialfund/internal/database"
-	"time"
+	"github.com/skip2/go-qrcode"
 )
 
 type Writer interface {
@@ -135,4 +139,53 @@ func (r *PostgresRepository) LoadAccountCreatedEmailData(ctx context.Context, us
 	data.ContributionFrequency = formatFrequency(frequency)
 	data.PaymentDue = formatPaymentDue(frequency, dueDay, interval)
 	return data, nil
+}
+
+func (r *PostgresRepository) LoadPaymentReminderData(ctx context.Context, contributionID *uuid.UUID) (*PaymentReminderData, error) {
+	if contributionID == nil {
+		return nil, nil
+	}
+	var data PaymentReminderData
+	var amount, lateFee, total decimal.Decimal
+	var dueDate time.Time
+	err := r.db.QueryRow(ctx, `
+		SELECT u.full_name,c.expected_amount,c.late_fee_amount,c.expected_amount+c.late_fee_amount,c.due_date,
+		       ps.account_name,ps.payment_type,COALESCE(ps.phone_number,''),
+		       COALESCE(ps.merchant_code,''),ps.ussd_template
+		FROM contributions c
+		JOIN users u ON u.id=c.user_id
+		CROSS JOIN payment_settings ps
+		WHERE c.id=$1`, *contributionID).Scan(
+		&data.MemberName, &amount, &lateFee, &total, &dueDate, &data.AccountName, &data.PaymentType,
+		&data.PhoneNumber, &data.MerchantCode, &data.USSDCode)
+	if err != nil {
+		return nil, err
+	}
+	data.OriginalAmount = formatAmount(amount)
+	data.LateFee = formatAmount(lateFee)
+	data.TotalAmountDue = formatAmount(total)
+	data.AmountDue = data.TotalAmountDue
+	data.DueDate = dueDate.Format("2 January 2006")
+	data.DaysUntilDue = int(dueDate.UTC().Truncate(24*time.Hour).Sub(time.Now().UTC().Truncate(24*time.Hour)).Hours() / 24)
+	data.DaysOverdue = -data.DaysUntilDue
+	if data.PaymentType == "PHONE" {
+		data.PaymentMethodLabel = "Mobile Money"
+	} else {
+		data.PaymentMethodLabel = "Mobile Money Merchant"
+	}
+	if data.PhoneNumber != "" {
+		data.USSDCode = strings.ReplaceAll(data.USSDCode, "{phone_number}", data.PhoneNumber)
+	}
+	if data.MerchantCode != "" {
+		data.USSDCode = strings.ReplaceAll(data.USSDCode, "{merchant_code}", data.MerchantCode)
+	}
+	if data.USSDCode != "" {
+		qr, qrErr := qrcode.Encode("tel:"+data.USSDCode, qrcode.Medium, 220)
+		if qrErr != nil {
+			return nil, fmt.Errorf("generate payment QR code: %w", qrErr)
+		}
+		data.QRCodeBytes = qr
+		data.QRCodeData = "cid:social-fund-payment-qr"
+	}
+	return &data, nil
 }

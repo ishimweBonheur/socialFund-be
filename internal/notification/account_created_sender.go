@@ -12,6 +12,7 @@ import (
 
 type AccountCreatedDataLoader interface {
 	LoadAccountCreatedEmailData(context.Context, uuid.UUID) (AccountCreatedEmailData, error)
+	LoadPaymentReminderData(context.Context, *uuid.UUID) (*PaymentReminderData, error)
 }
 type RoutingSender struct {
 	fallback    Sender
@@ -32,13 +33,21 @@ func (s *RoutingSender) Send(ctx context.Context, n Notification) error {
 		data, err = s.loader.LoadAccountCreatedEmailData(ctx, n.UserID)
 		if err == nil {
 			data.LoginURL = BuildLoginURL(s.frontendURL)
-			data.LogoURL = strings.TrimRight(s.frontendURL, "/") + "/social-fund-icon.png"
+			data.LogoURL = "cid:" + logoContentID
 			data.Recipient = n.Recipient
 			err = s.email.SendAccountCreated(ctx, data)
 		}
 	} else {
-		n.LogoURL = strings.TrimRight(s.frontendURL, "/") + "/social-fund-icon.png"
-		err = s.email.SendNotification(ctx, n)
+		n.LogoURL = "cid:" + logoContentID
+		if n.Type == "CONTRIBUTION_DUE" || n.Type == "CONTRIBUTION_OVERDUE" {
+			n.PaymentURL = strings.TrimRight(s.frontendURL, "/") + "/dashboard"
+			if err == nil {
+				n.Reminder, err = s.loader.LoadPaymentReminderData(ctx, n.ContributionID)
+			}
+		}
+		if err == nil {
+			err = s.email.SendNotification(ctx, n)
+		}
 	}
 	status := "sent"
 	if err != nil {

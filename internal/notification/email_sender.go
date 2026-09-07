@@ -1,9 +1,11 @@
 package notification
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	mail "github.com/wneessen/go-mail"
 )
@@ -22,6 +24,7 @@ type GoMailSender struct {
 	client      mailClient
 	from        string
 	attachments AttachmentLoader
+	logo        []byte
 }
 
 func NewGoMailSender(host string, port int, username, password, from string, loaders ...AttachmentLoader) (*GoMailSender, error) {
@@ -36,7 +39,8 @@ func NewGoMailSender(host string, port int, username, password, from string, loa
 	if len(loaders) > 0 {
 		loader = loaders[0]
 	}
-	return &GoMailSender{client: client, from: from, attachments: loader}, nil
+	logo, _ := os.ReadFile("social-fund-icon.png")
+	return &GoMailSender{client: client, from: from, attachments: loader, logo: logo}, nil
 }
 func (s *GoMailSender) SendAccountCreated(ctx context.Context, data AccountCreatedEmailData) error {
 	htmlBody, plainBody, err := renderAccountCreated(data)
@@ -57,6 +61,11 @@ func (s *GoMailSender) SendAccountCreated(ctx context.Context, data AccountCreat
 	message.Subject(accountCreatedSubject)
 	message.SetBodyString(mail.TypeTextPlain, plainBody)
 	message.AddAlternativeString(mail.TypeTextHTML, htmlBody)
+	if len(s.logo) > 0 {
+		if err = message.EmbedReader("social-fund-icon.png", bytes.NewReader(s.logo), mail.WithFileContentID(logoContentID)); err != nil {
+			return fmt.Errorf("embed Social Fund logo: %w", err)
+		}
+	}
 	if err = s.client.DialAndSendWithContext(ctx, message); err != nil {
 		return fmt.Errorf("send account created email: %w", err)
 	}
@@ -81,6 +90,16 @@ func (s *GoMailSender) SendNotification(ctx context.Context, notification Notifi
 	message.Subject(*notification.Subject)
 	message.SetBodyString(mail.TypeTextPlain, plainBody)
 	message.AddAlternativeString(mail.TypeTextHTML, htmlBody)
+	if len(s.logo) > 0 {
+		if err = message.EmbedReader("social-fund-icon.png", bytes.NewReader(s.logo), mail.WithFileContentID(logoContentID)); err != nil {
+			return fmt.Errorf("embed Social Fund logo: %w", err)
+		}
+	}
+	if notification.Reminder != nil && len(notification.Reminder.QRCodeBytes) > 0 {
+		if err = message.EmbedReader("payment-qr.png", bytes.NewReader(notification.Reminder.QRCodeBytes), mail.WithFileContentID("social-fund-payment-qr")); err != nil {
+			return fmt.Errorf("embed payment QR code: %w", err)
+		}
+	}
 	if notification.AttachmentKey != nil && s.attachments != nil {
 		reader, filename, openErr := s.attachments.Open(ctx, *notification.AttachmentKey)
 		if openErr != nil {

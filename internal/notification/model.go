@@ -1,8 +1,9 @@
 package notification
 
 import (
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Notification struct {
@@ -26,6 +27,27 @@ type Notification struct {
 	RejectURL      *string
 	CreatedAt      time.Time
 	LogoURL        string
+	PaymentURL     string               `json:"-"`
+	Reminder       *PaymentReminderData `json:"-"`
+}
+
+type PaymentReminderData struct {
+	MemberName         string
+	AmountDue          string
+	OriginalAmount     string
+	LateFee            string
+	TotalAmountDue     string
+	DueDate            string
+	DaysUntilDue       int
+	DaysOverdue        int
+	AccountName        string
+	PaymentType        string
+	PaymentMethodLabel string
+	PhoneNumber        string
+	MerchantCode       string
+	USSDCode           string
+	QRCodeData         string
+	QRCodeBytes        []byte `json:"-"`
 }
 type Filter struct {
 	Status, Type, DateFrom, DateTo string

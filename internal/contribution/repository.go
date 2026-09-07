@@ -2,11 +2,12 @@ package contribution
 
 import (
 	"context"
+	"socialfund/internal/database"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"socialfund/internal/database"
-	"time"
 )
 
 type Repository interface {
