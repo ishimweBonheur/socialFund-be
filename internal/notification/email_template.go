@@ -13,7 +13,6 @@ import (
 )
 
 const accountCreatedSubject = "Your Social Fund Account Has Been Created"
-const logoContentID = "social-fund-logo"
 
 type AccountCreatedEmailData struct {
 	FullName              string
@@ -24,7 +23,7 @@ type AccountCreatedEmailData struct {
 	PaymentDue            string
 	LoginURL              string
 	Recipient             string
-	LogoURL               string
+	LogoURL               template.URL
 	Heading               string
 	Intro                 string
 }
@@ -114,12 +113,13 @@ var htmlTemplate = template.Must(template.New("account-created").Parse(`
 `))
 
 type notificationEmailData struct {
-	Subject, Heading, Label, Accent, Tint, LogoURL string
-	Body                                           template.HTML
-	ApproveURL, RejectURL                          string
-	PaymentURL                                     string
-	Reminder                                       *PaymentReminderData
-	QRCodeData                                     template.URL
+	Subject, Heading, Label, Accent, Tint string
+	LogoURL                               template.URL
+	Body                                  template.HTML
+	ApproveURL, RejectURL                 string
+	PaymentURL                            string
+	Reminder                              *PaymentReminderData
+	QRCodeData                            template.URL
 }
 
 var urlPattern = regexp.MustCompile(`https?://[^\s<]+`)
@@ -177,7 +177,6 @@ var notificationHTMLTemplate = template.Must(template.New("notification").Parse(
                     {{if .QRCodeData}}<div style="margin:18px 0 4px;text-align:center"><div style="color:#2876B2;font-weight:bold;margin-bottom:8px">Scan to dial payment</div><img src="{{.QRCodeData}}" width="220" height="220" alt="Scan to dial payment" style="display:inline-block;border:1px solid #D9E6EF;padding:8px;background:#fff"></div>{{end}}
                   </div>
                   {{if .PaymentURL}}<p style="margin:0"><a href="{{.PaymentURL}}" style="display:block;text-align:center;background:#2876B2;color:#fff;text-decoration:none;padding:13px 18px;border-radius:7px;font-weight:bold">Add payment details and upload proof</a></p>{{end}}
-                  <p style="background:#F3F7FA;border-radius:8px;padding:15px;margin:18px 0 0;color:#213448;line-height:1.5"><strong>After making your payment, reply to this email with:</strong><br>Amount: {{.Reminder.AmountDue}}<br>Reference ID: 123456789<br>Payment Date: {{.Reminder.DueDate}}<br><br>Attach a screenshot or PDF of your receipt.</p>
                 {{else}}
                   <div style="background:#94B4C1;border-radius:9px;padding:20px;color:#213448;font-size:15px;line-height:1.7;box-shadow:0 8px 24px #94B4C1">
                     {{.Body}}
@@ -224,6 +223,8 @@ func notificationAppearance(kind string) (string, string, string) {
 		return "ACTION REQUIRED", "#213448", "#94B4C1"
 	case "CONTRIBUTION_OVERDUE":
 		return "PAYMENT OVERDUE", "#547792", "#94B4C1"
+	case "ADMIN_CONTRIBUTION_OVERDUE":
+		return "MEMBER FOLLOW-UP", "#547792", "#94B4C1"
 	case "PROOF_SUBMITTED":
 		return "REVIEW REQUIRED", "#547792", "#94B4C1"
 	default:
@@ -262,7 +263,7 @@ func renderNotification(n Notification) (string, string, error) {
 		Accent:     accent,
 		Tint:       tint,
 		Body:       template.HTML(escaped),
-		LogoURL:    n.LogoURL,
+		LogoURL:    template.URL(n.LogoURL),
 		PaymentURL: n.PaymentURL,
 		Reminder:   n.Reminder,
 	}

@@ -150,6 +150,13 @@ func TestSchedulerPenaltyReminderAndStateEligibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCount(t, pool, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND user_id=(SELECT user_id FROM contributions WHERE id=$1) AND type='CONTRIBUTION_OVERDUE'`, contributionID, 1)
+	var adminFollowUps int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE contribution_id=$1 AND user_id=$2 AND type='ADMIN_CONTRIBUTION_OVERDUE'`, contributionID, adminID).Scan(&adminFollowUps); err != nil {
+		t.Fatal(err)
+	}
+	if adminFollowUps != 1 {
+		t.Fatalf("admin overdue follow-ups=%d, want 1", adminFollowUps)
+	}
 	if _, err := pool.Exec(ctx, `UPDATE contributions SET status='PENDING' WHERE id=$1`, contributionID); err != nil {
 		t.Fatal(err)
 	}

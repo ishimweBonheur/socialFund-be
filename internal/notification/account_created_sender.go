@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"strings"
 	"time"
@@ -22,9 +23,18 @@ type RoutingSender struct {
 	logger      *slog.Logger
 }
 
+const embeddedLogoURL = "cid:social-fund-logo"
+
 func NewRoutingSender(fallback Sender, loader AccountCreatedDataLoader, email EmailSender, frontendURL string, logger *slog.Logger) *RoutingSender {
 	return &RoutingSender{fallback: fallback, loader: loader, email: email, frontendURL: frontendURL, logger: logger}
 }
+
+func (s *RoutingSender) logoURL() string {
+	// The logo is part of the message, so recipients do not need access to a
+	// public frontend or domain for it to render.
+	return embeddedLogoURL
+}
+
 func (s *RoutingSender) Send(ctx context.Context, n Notification) error {
 	started := time.Now()
 	var err error
@@ -33,12 +43,12 @@ func (s *RoutingSender) Send(ctx context.Context, n Notification) error {
 		data, err = s.loader.LoadAccountCreatedEmailData(ctx, n.UserID)
 		if err == nil {
 			data.LoginURL = BuildLoginURL(s.frontendURL)
-			data.LogoURL = "cid:" + logoContentID
+			data.LogoURL = template.URL(s.logoURL())
 			data.Recipient = n.Recipient
 			err = s.email.SendAccountCreated(ctx, data)
 		}
 	} else {
-		n.LogoURL = "cid:" + logoContentID
+		n.LogoURL = s.logoURL()
 		if n.Type == "CONTRIBUTION_DUE" || n.Type == "CONTRIBUTION_OVERDUE" {
 			n.PaymentURL = strings.TrimRight(s.frontendURL, "/") + "/dashboard"
 			if err == nil {

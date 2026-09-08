@@ -27,6 +27,21 @@ type GoMailSender struct {
 	logo        []byte
 }
 
+const (
+	logoFilePath  = "social-fund-icon.png"
+	logoContentID = "social-fund-logo"
+)
+
+func (s *GoMailSender) embedSocialFundLogo(message *mail.Msg, logoURL string) error {
+	if logoURL != embeddedLogoURL || len(s.logo) == 0 {
+		return nil
+	}
+	if err := message.EmbedReader(logoFilePath, bytes.NewReader(s.logo), mail.WithFileContentID(logoContentID)); err != nil {
+		return fmt.Errorf("embed logo image: %w", err)
+	}
+	return nil
+}
+
 func NewGoMailSender(host string, port int, username, password, from string, loaders ...AttachmentLoader) (*GoMailSender, error) {
 	if host == "" || port < 1 || port > 65535 || username == "" || password == "" || from == "" {
 		return nil, fmt.Errorf("SMTP host, port, username, password, and from address are required")
@@ -39,10 +54,13 @@ func NewGoMailSender(host string, port int, username, password, from string, loa
 	if len(loaders) > 0 {
 		loader = loaders[0]
 	}
-	logo, _ := os.ReadFile("social-fund-icon.png")
+	logo, _ := os.ReadFile(logoFilePath)
 	return &GoMailSender{client: client, from: from, attachments: loader, logo: logo}, nil
 }
 func (s *GoMailSender) SendAccountCreated(ctx context.Context, data AccountCreatedEmailData) error {
+	if data.LogoURL == embeddedLogoURL && len(s.logo) == 0 {
+		data.LogoURL = ""
+	}
 	htmlBody, plainBody, err := renderAccountCreated(data)
 	if err != nil {
 		return err
@@ -61,10 +79,8 @@ func (s *GoMailSender) SendAccountCreated(ctx context.Context, data AccountCreat
 	message.Subject(accountCreatedSubject)
 	message.SetBodyString(mail.TypeTextPlain, plainBody)
 	message.AddAlternativeString(mail.TypeTextHTML, htmlBody)
-	if len(s.logo) > 0 {
-		if err = message.EmbedReader("social-fund-icon.png", bytes.NewReader(s.logo), mail.WithFileContentID(logoContentID)); err != nil {
-			return fmt.Errorf("embed Social Fund logo: %w", err)
-		}
+	if err = s.embedSocialFundLogo(message, string(data.LogoURL)); err != nil {
+		return err
 	}
 	if err = s.client.DialAndSendWithContext(ctx, message); err != nil {
 		return fmt.Errorf("send account created email: %w", err)
@@ -75,6 +91,9 @@ func (s *GoMailSender) SendAccountCreated(ctx context.Context, data AccountCreat
 func (s *GoMailSender) SendNotification(ctx context.Context, notification Notification) error {
 	if notification.Subject == nil || notification.Message == nil {
 		return fmt.Errorf("notification content is missing")
+	}
+	if notification.LogoURL == embeddedLogoURL && len(s.logo) == 0 {
+		notification.LogoURL = ""
 	}
 	htmlBody, plainBody, err := renderNotification(notification)
 	if err != nil {
@@ -90,10 +109,8 @@ func (s *GoMailSender) SendNotification(ctx context.Context, notification Notifi
 	message.Subject(*notification.Subject)
 	message.SetBodyString(mail.TypeTextPlain, plainBody)
 	message.AddAlternativeString(mail.TypeTextHTML, htmlBody)
-	if len(s.logo) > 0 {
-		if err = message.EmbedReader("social-fund-icon.png", bytes.NewReader(s.logo), mail.WithFileContentID(logoContentID)); err != nil {
-			return fmt.Errorf("embed Social Fund logo: %w", err)
-		}
+	if err = s.embedSocialFundLogo(message, notification.LogoURL); err != nil {
+		return err
 	}
 	if notification.Reminder != nil && len(notification.Reminder.QRCodeBytes) > 0 {
 		if err = message.EmbedReader("payment-qr.png", bytes.NewReader(notification.Reminder.QRCodeBytes), mail.WithFileContentID("social-fund-payment-qr")); err != nil {

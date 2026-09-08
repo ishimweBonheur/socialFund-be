@@ -315,7 +315,10 @@ func (s *Service) ProcessOverdue(ctx context.Context, limit int) (int, error) {
 		}
 		adminSubject := fmt.Sprintf("Overdue contribution: %s", u.FullName)
 		adminMessage := fmt.Sprintf("%s has an overdue contribution. Total amount due: %s. Due date: %s. Please follow up with the member.", u.FullName, c.TotalDue().StringFixed(2), c.DueDate.Format("2006-01-02"))
-		if _, e = s.notifications.Create(ctx, guard, notification.Notification{UserID: adminID, ContributionID: &id, Type: "CONTRIBUTION_OVERDUE", Channel: "EMAIL", Recipient: adminEmail, Subject: &adminSubject, Message: &adminMessage, Status: "PENDING"}); e != nil {
+		// This is an administrator follow-up, not the member's payment reminder.
+		// Keeping it as a distinct type prevents the email renderer from loading the
+		// member's payment-reminder details into the administrator's email.
+		if _, e = s.notifications.Create(ctx, guard, notification.Notification{UserID: adminID, ContributionID: &id, Type: "ADMIN_CONTRIBUTION_OVERDUE", Channel: "EMAIL", Recipient: adminEmail, Subject: &adminSubject, Message: &adminMessage, Status: "PENDING"}); e != nil {
 			return 0, e
 		}
 	}

@@ -35,7 +35,7 @@ func (r *PostgresRepository) ListAdmin(ctx context.Context, f AdminListFilter) (
 		return nil, 0, err
 	}
 	args = append(args, f.Limit, f.Offset)
-	rows, err := r.db.Query(ctx, `SELECT `+columns+`,u.full_name,u.email FROM contributions c JOIN users u ON u.id=c.user_id `+where+` ORDER BY c.created_at DESC LIMIT $14 OFFSET $15`, args...)
+	rows, err := r.db.Query(ctx, `SELECT `+columns+`,u.full_name,u.email FROM contributions c JOIN users u ON u.id=c.user_id `+where+` ORDER BY CASE WHEN c.status='PENDING' THEN 0 ELSE 1 END, c.created_at DESC LIMIT $14 OFFSET $15`, args...)
 	if err != nil {
 		return nil, 0, err
 	}

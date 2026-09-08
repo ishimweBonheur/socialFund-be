@@ -134,6 +134,30 @@ func TestGoMailSenderAddressesNotificationRecipient(t *testing.T) {
 	}
 }
 
+func TestGoMailSenderEmbedsLogoWhenItUsesCID(t *testing.T) {
+	client := &fakeMailClient{}
+	sender := &GoMailSender{client: client, from: "sender@example.com", logo: []byte("test logo")}
+	subject, body := "Contribution overdue", "Please submit your payment proof."
+
+	err := sender.SendNotification(context.Background(), Notification{
+		Type:      "CONTRIBUTION_OVERDUE",
+		Recipient: "member@example.com",
+		Subject:   &subject,
+		Message:   &body,
+		LogoURL:   embeddedLogoURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(client.message, embeddedLogoURL) {
+		t.Fatal("email does not contain the logo CID reference")
+	}
+	if !strings.Contains(client.message, "Content-Id: social-fund-logo") {
+		t.Fatal("email does not embed the logo with its expected content ID")
+	}
+}
+
 type fakeRepository struct {
 	items     []Notification
 	sent      []uuid.UUID
