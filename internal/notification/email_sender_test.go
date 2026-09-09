@@ -279,7 +279,7 @@ func TestPaymentReminderTemplateContainsPaymentInstructions(t *testing.T) {
 			PaymentURL: "https://example.com/dashboard",
 
 			Reminder: &PaymentReminderData{
-				MemberName:   "Patience Ineza",
+				MemberName:   "patience ineza",
 				AmountDue:    "20,000.00 RWF",
 				DueDate:      "7 September 2026",
 				AccountName:  "Social Fund",
@@ -298,7 +298,7 @@ func TestPaymentReminderTemplateContainsPaymentInstructions(t *testing.T) {
 	decoded := html.UnescapeString(htmlBody)
 
 	for _, value := range []string{
-		"Hello Patience Ineza",
+		"Hello Patience",
 		"20,000.00 RWF",
 		"7 September 2026",
 		"Social Fund",
@@ -310,6 +310,31 @@ func TestPaymentReminderTemplateContainsPaymentInstructions(t *testing.T) {
 		if !strings.Contains(decoded, value) {
 			t.Errorf("HTML body missing %q", value)
 		}
+	}
+}
+
+func TestOverduePaymentReminderUsesOverdueHeading(t *testing.T) {
+	subject := "Contribution overdue"
+	message := "Your contribution is overdue."
+
+	htmlBody, _, err := renderNotification(Notification{
+		Type:    "CONTRIBUTION_OVERDUE",
+		Subject: &subject,
+		Message: &message,
+		Reminder: &PaymentReminderData{
+			MemberName:  "Ishimwe Knowless",
+			DaysOverdue: 8,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(htmlBody, "Your contribution is overdue — 8 days late") {
+		t.Fatal("overdue reminder uses the pre-due heading")
+	}
+	if strings.Contains(htmlBody, "Your contribution is almost due") {
+		t.Fatal("overdue reminder contains the pre-due heading")
 	}
 }
 
