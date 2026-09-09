@@ -8,6 +8,7 @@ CREATE TABLE
                 'ACCOUNT_CREATED',
                 'CONTRIBUTION_DUE',
                 'CONTRIBUTION_OVERDUE',
+                'ADMIN_CONTRIBUTION_OVERDUE',
                 'PROOF_SUBMITTED',
                 'CONTRIBUTION_APPROVED',
                 'CONTRIBUTION_REJECTED',
